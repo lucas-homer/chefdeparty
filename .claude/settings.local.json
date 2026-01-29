@@ -43,7 +43,31 @@
       "Bash(git add:*)",
       "Bash(git commit -m \"$\\(cat <<''EOF''\nAdd CLAUDE.md for AI assistant context\n\nDocuments key commands, architecture overview, and patterns\nfor future Claude Code sessions working in this repository.\n\nCo-Authored-By: Claude Opus 4.5 <noreply@anthropic.com>\nEOF\n\\)\")",
       "Bash(git push)",
-      "Bash(git commit -m \"$\\(cat <<''EOF''\nUpdate Claude Code permissions\n\nCo-Authored-By: Claude Opus 4.5 <noreply@anthropic.com>\nEOF\n\\)\")"
+      "Bash(git commit -m \"$\\(cat <<''EOF''\nUpdate Claude Code permissions\n\nCo-Authored-By: Claude Opus 4.5 <noreply@anthropic.com>\nEOF\n\\)\")",
+      "Bash(TMPDIR=/tmp pnpm test:*)",
+      "Bash(TMPDIR=/tmp pnpm db:migrate:*)",
+      "Bash(TMPDIR=/tmp pnpm test:e2e:*)",
+      "Bash(TMPDIR=/tmp pnpm exec playwright install:*)",
+      "Bash(git commit:*)",
+      "Bash(pnpm list:*)",
+      "Bash(env)",
+      "Bash(TMPDIR=/tmp npx shadcn@latest add:*)",
+      "Bash(pnpm test:e2e:*)",
+      "mcp__playwright__browser_navigate",
+      "Bash(getconf:*)",
+      "Bash(source ~/.zshrc)",
+      "Bash(echo:*)",
+      "mcp__playwright__browser_resize",
+      "mcp__playwright__browser_click",
+      "Bash(pnpm exec vite build:*)",
+      "mcp__playwright__browser_run_code",
+      "mcp__playwright__browser_take_screenshot",
+      "mcp__playwright__browser_evaluate",
+      "mcp__playwright__browser_close"
     ]
-  }
+  },
+  "enableAllProjectMcpServers": true,
+  "enabledMcpjsonServers": [
+    "playwright"
+  ]
 }

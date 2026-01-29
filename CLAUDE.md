@@ -63,6 +63,21 @@ pnpm eval:watch       # Run evals in watch mode
 
 **Environment:** Secrets go in `.dev.vars` for local dev (gitignored). Production secrets set via `wrangler secret`.
 
+## Development Methodology
+
+**Test-Driven Development (TDD):** This project follows TDD practices. When implementing new features or fixing bugs:
+
+1. **Write tests first** - Define expected behavior before writing implementation code
+2. **Run tests to verify they fail** - Confirms the test is actually testing something
+3. **Implement the minimum code** to make tests pass
+4. **Refactor** while keeping tests green
+
+For any code changes, ensure appropriate test coverage exists:
+- Unit tests (`src/**/*.test.ts`) for business logic and utilities
+- E2E tests (`e2e/`) for user-facing flows and critical paths
+
+Never skip writing tests to "save time" - the test suite is the project's safety net.
+
 ## UI Guidelines
 
 **Component Library:** Prefer shadcn-ui components for all UI work, whether server-rendered or client-side React. This ensures consistent styling and accessible, composable patterns.
