@@ -6,7 +6,7 @@
     "dev": "wrangler dev",
     "dev:client": "vite build --watch",
     "build": "pnpm build:client && pnpm build:worker",
-    "build:client": "vite build",
+    "build:client": "vite build && cp -r public/* dist/",
     "build:worker": "wrangler deploy --dry-run --outdir=dist/worker",
     "start": "wrangler dev",
     "lint": "eslint src client --ext .ts,.tsx",

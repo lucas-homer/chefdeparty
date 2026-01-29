@@ -24,6 +24,7 @@ export const Layout: FC<LayoutProps> = ({
         <meta charSet="UTF-8" />
         <meta name="viewport" content="width=device-width, initial-scale=1.0" />
         <title>{title}</title>
+        <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
         <link href="/assets/main.css" rel="stylesheet" />
       </head>
       <body className="min-h-screen bg-background">
@@ -107,6 +108,7 @@ export const PublicLayout: FC<{ title?: string; children?: ReactNode }> = ({
         <meta charSet="UTF-8" />
         <meta name="viewport" content="width=device-width, initial-scale=1.0" />
         <title>{title}</title>
+        <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
         <link href="/assets/main.css" rel="stylesheet" />
       </head>
       <body className="min-h-screen bg-background">
