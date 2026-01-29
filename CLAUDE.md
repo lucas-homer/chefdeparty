@@ -63,6 +63,10 @@ pnpm eval:watch       # Run evals in watch mode
 
 **Environment:** Secrets go in `.dev.vars` for local dev (gitignored). Production secrets set via `wrangler secret`.
 
+## UI Guidelines
+
+**Component Library:** Prefer shadcn-ui components for all UI work, whether server-rendered or client-side React. This ensures consistent styling and accessible, composable patterns.
+
 ## Legacy Code
 
 Files in `src/components/` marked with `@deprecated` are from a previous Next.js implementation. They're kept for reference but not actively used - the app now uses Hono for server rendering.
