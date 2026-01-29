@@ -48,7 +48,22 @@ export const Layout: FC<LayoutProps> = ({
                     name: user.name,
                     image: user.image,
                   })}
-                />
+                >
+                  {/* Placeholder avatar to prevent layout shift during hydration */}
+                  <div className="w-8 h-8 rounded-full overflow-hidden">
+                    {user.image ? (
+                      <img
+                        src={user.image}
+                        alt={user.name || "User"}
+                        className="w-8 h-8 rounded-full object-cover"
+                      />
+                    ) : (
+                      <span className="w-8 h-8 rounded-full bg-primary text-primary-foreground flex items-center justify-center text-sm font-medium">
+                        {user.name?.charAt(0).toUpperCase() || "U"}
+                      </span>
+                    )}
+                  </div>
+                </div>
               </nav>
             </div>
           </header>
