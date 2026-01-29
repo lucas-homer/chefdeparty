@@ -686,9 +686,9 @@ pageRoutes.get("/recipes", requireAuth, async (c) => {
 
   return c.render(
     <Layout title="Your Recipes - ChefDeParty" user={user} scripts={["/assets/import-recipe.js"]}>
-      <div className="flex items-center justify-between mb-8">
-        <h1 className="text-2xl font-bold">Your Recipes</h1>
-        <div className="flex items-center gap-2">
+      <div className="mb-8">
+        <h1 className="text-2xl font-bold mb-4">Your Recipes</h1>
+        <div className="flex flex-wrap items-center gap-2">
           <div id="import-recipe-root" className="contents" />
           <a
             href="/recipes/generate"

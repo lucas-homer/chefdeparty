@@ -2,6 +2,7 @@ import React, { useState, useCallback, FormEvent, ChangeEvent } from "react";
 import { createRoot } from "react-dom/client";
 import { hc } from "hono/client";
 import type { ApiRoutes } from "../src/routes/api";
+import { Button, IconButton } from "./components";
 
 // Create typed client
 const client = hc<ApiRoutes>("/api");
@@ -161,24 +162,25 @@ function RecipeForm({ recipeId, initialData }: RecipeFormProps) {
       <div className="space-y-4">
         <div className="flex items-center justify-between">
           <label className="text-sm font-medium">Ingredients</label>
-          <button
+          <Button
             type="button"
             onClick={addIngredient}
-            className="text-sm text-primary hover:underline"
+            variant="outlined"
+            className="py-0.5 px-2 text-xs"
           >
-            + Add Ingredient
-          </button>
+            + Add
+          </Button>
         </div>
         {ingredients.map((ing, index) => (
-          <div key={index} className="flex gap-2">
+          <div key={index} className="flex gap-2 items-center">
             <input
               type="text"
-              placeholder="Amount"
+              placeholder="Amt"
               value={ing.amount || ""}
               onChange={(e: ChangeEvent<HTMLInputElement>) =>
                 updateIngredient(index, "amount", e.target.value)
               }
-              className="w-20 px-2 py-1 border rounded-md text-sm"
+              className="w-14 px-2 py-1.5 border rounded-md text-sm"
             />
             <input
               type="text"
@@ -187,7 +189,7 @@ function RecipeForm({ recipeId, initialData }: RecipeFormProps) {
               onChange={(e: ChangeEvent<HTMLInputElement>) =>
                 updateIngredient(index, "unit", e.target.value)
               }
-              className="w-24 px-2 py-1 border rounded-md text-sm"
+              className="w-14 px-2 py-1.5 border rounded-md text-sm"
             />
             <input
               type="text"
@@ -196,19 +198,19 @@ function RecipeForm({ recipeId, initialData }: RecipeFormProps) {
               onChange={(e: ChangeEvent<HTMLInputElement>) =>
                 updateIngredient(index, "ingredient", e.target.value)
               }
-              className="flex-1 px-2 py-1 border rounded-md text-sm"
+              className="flex-1 min-w-0 px-2 py-1.5 border rounded-md text-sm"
               required
             />
-            <button
+            <IconButton
               type="button"
               onClick={() => removeIngredient(index)}
-              className="text-muted-foreground hover:text-destructive"
+              variant="outlined"
               disabled={ingredients.length <= 1}
             >
-              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
               </svg>
-            </button>
+            </IconButton>
           </div>
         ))}
       </div>
@@ -216,17 +218,18 @@ function RecipeForm({ recipeId, initialData }: RecipeFormProps) {
       <div className="space-y-4">
         <div className="flex items-center justify-between">
           <label className="text-sm font-medium">Instructions</label>
-          <button
+          <Button
             type="button"
             onClick={addInstruction}
-            className="text-sm text-primary hover:underline"
+            variant="outlined"
+            className="py-0.5 px-2 text-xs"
           >
-            + Add Step
-          </button>
+            + Add
+          </Button>
         </div>
         {instructions.map((inst, index) => (
-          <div key={index} className="flex gap-2">
-            <span className="w-8 h-8 flex items-center justify-center bg-muted rounded-full text-sm font-medium">
+          <div key={index} className="flex gap-2 items-start">
+            <span className="w-6 h-6 flex items-center justify-center bg-muted rounded-full text-xs font-medium flex-shrink-0">
               {inst.step}
             </span>
             <textarea
@@ -235,26 +238,26 @@ function RecipeForm({ recipeId, initialData }: RecipeFormProps) {
               onChange={(e: ChangeEvent<HTMLTextAreaElement>) =>
                 updateInstruction(index, e.target.value)
               }
-              className="flex-1 px-2 py-1 border rounded-md text-sm min-h-[60px]"
+              className="flex-1 min-w-0 px-2 py-1.5 border rounded-md text-sm min-h-[60px]"
               required
             />
-            <button
+            <IconButton
               type="button"
               onClick={() => removeInstruction(index)}
-              className="text-muted-foreground hover:text-destructive self-start mt-2"
+              variant="outlined"
               disabled={instructions.length <= 1}
             >
-              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
               </svg>
-            </button>
+            </IconButton>
           </div>
         ))}
       </div>
 
       <div className="grid grid-cols-3 gap-4">
         <div className="space-y-2">
-          <label className="text-sm font-medium">Prep Time (min)</label>
+          <label className="text-sm font-medium">Prep (min)</label>
           <input
             type="number"
             value={prepTime}
@@ -264,7 +267,7 @@ function RecipeForm({ recipeId, initialData }: RecipeFormProps) {
           />
         </div>
         <div className="space-y-2">
-          <label className="text-sm font-medium">Cook Time (min)</label>
+          <label className="text-sm font-medium">Cook (min)</label>
           <input
             type="number"
             value={cookTime}
@@ -285,13 +288,14 @@ function RecipeForm({ recipeId, initialData }: RecipeFormProps) {
         </div>
       </div>
 
-      <button
+      <Button
         type="submit"
         disabled={saving}
-        className="w-full py-2 px-4 bg-primary text-primary-foreground rounded-md hover:bg-primary/90 disabled:opacity-50"
+        variant="primary"
+        className="w-full py-2"
       >
         {saving ? "Saving..." : recipeId ? "Update Recipe" : "Create Recipe"}
-      </button>
+      </Button>
     </form>
   );
 }
