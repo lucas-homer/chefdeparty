@@ -1,0 +1,41 @@
+{
+  "version": "7",
+  "dialect": "sqlite",
+  "entries": [
+    {
+      "idx": 0,
+      "version": "6",
+      "when": 1769295128032,
+      "tag": "0000_fluffy_silverclaw",
+      "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "6",
+      "when": 1769370027417,
+      "tag": "0001_useful_retro_girl",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1769383357519,
+      "tag": "0002_eager_shotgun",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "6",
+      "when": 1769383443336,
+      "tag": "0003_messy_the_hood",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "6",
+      "when": 1769384530867,
+      "tag": "0004_salty_butterfly",
+      "breakpoints": true
+    }
+  ]
+}

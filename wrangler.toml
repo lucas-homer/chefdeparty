@@ -1,0 +1,57 @@
+name = "chefdeparty"
+main = "src/index.ts"
+compatibility_date = "2024-12-30"
+compatibility_flags = ["nodejs_compat"]
+
+# Static assets from Vite build (using Workers Assets)
+[assets]
+directory = "./dist"
+
+# D1 Database
+[[d1_databases]]
+binding = "DB"
+database_name = "chefdeparty-db"
+database_id = "placeholder-will-be-updated-after-creation"
+migrations_dir = "drizzle/migrations"
+
+# Durable Objects for scheduled reminders
+[[durable_objects.bindings]]
+name = "PARTY_REMINDER"
+class_name = "PartyReminder"
+
+[[migrations]]
+tag = "v1"
+new_classes = ["PartyReminder"]
+
+# Development environment
+[env.dev]
+name = "chefdeparty-dev"
+
+[env.dev.vars]
+NODE_ENV = "development"
+
+# Production environment
+[env.production]
+name = "chefdeparty"
+
+[env.production.vars]
+NODE_ENV = "production"
+
+# Build configuration for wrangler
+[build]
+command = "pnpm run build:client"
+
+# Cron triggers for scheduled jobs
+[triggers]
+crons = ["0 3 * * *"]  # Run at 3 AM UTC daily
+
+# Environment variables (set via wrangler secret or dashboard)
+# AUTH_SECRET - Auth.js secret
+# AUTH_GOOGLE_ID - Google OAuth client ID
+# AUTH_GOOGLE_SECRET - Google OAuth client secret
+# GOOGLE_GENERATIVE_AI_API_KEY - Google AI API key
+# LANGFUSE_PUBLIC_KEY - Langfuse public key
+# LANGFUSE_SECRET_KEY - Langfuse secret key
+# RESEND_API_KEY - Resend email API key
+# CRON_SECRET - Secret for authenticating cron job requests
+# ADMIN_EMAILS - Comma-separated list of admin email addresses

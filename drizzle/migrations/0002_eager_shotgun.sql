@@ -1,0 +1,1 @@
+ALTER TABLE `timeline_tasks` ADD `google_calendar_event_id` text;
