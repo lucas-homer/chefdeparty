@@ -34,7 +34,7 @@ interface TaskForReminder {
 interface Env {
   DB: D1Database;
   RESEND_API_KEY: string;
-  NEXT_PUBLIC_URL?: string;
+  APP_URL?: string;
 }
 
 export class PartyReminder extends DurableObject<Env> {
@@ -242,7 +242,7 @@ export class PartyReminder extends DurableObject<Env> {
       return;
     }
 
-    const baseUrl = this.env.NEXT_PUBLIC_URL || "https://chefde.party";
+    const baseUrl = this.env.APP_URL || "https://chefde.party";
     const inviteUrl = `${baseUrl}/parties/${state.partyId}/timeline`;
 
     const partyDate = new Date(state.partyDateTime);

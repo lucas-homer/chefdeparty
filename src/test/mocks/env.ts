@@ -94,7 +94,7 @@ export function createMockEnv(overrides: Partial<Env> = {}): Env {
     LANGFUSE_PUBLIC_KEY: "mock-langfuse-public",
     LANGFUSE_SECRET_KEY: "mock-langfuse-secret",
     CRON_SECRET: "mock-cron-secret",
-    NEXT_PUBLIC_URL: "http://localhost:3000",
+    APP_URL: "http://test.local",
     TAVILY_API_KEY: "mock-tavily-key",
     ADMIN_EMAILS: "admin@test.com",
     ...overrides,

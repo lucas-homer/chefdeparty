@@ -82,6 +82,12 @@ Never skip writing tests to "save time" - the test suite is the project's safety
 
 **Component Library:** Prefer shadcn-ui components for all UI work, whether server-rendered or client-side React. This ensures consistent styling and accessible, composable patterns.
 
+## Local Development
+
+**Dev URL:** Local development runs through a Cloudflare tunnel at `https://labs.lucashomer.com`. This is the URL that should be used for OAuth redirect URIs in Google Cloud Console for local testing.
+
+Set `APP_URL=https://labs.lucashomer.com` in `.dev.vars` for local development.
+
 ## Legacy Code
 
 Files in `src/components/` marked with `@deprecated` are from a previous Next.js implementation. They're kept for reference but not actively used - the app now uses Hono for server rendering.

@@ -199,7 +199,7 @@ pageRoutes.get("/parties/:id", requireAuth, async (c) => {
     );
   }
 
-  const baseUrl = c.env.NEXT_PUBLIC_URL || "https://chefde.party";
+  const baseUrl = c.env.APP_URL || "https://chefde.party";
   const shareUrl = `${baseUrl}/invite/${party.shareToken}`;
 
   const formatDate = (date: Date) => {

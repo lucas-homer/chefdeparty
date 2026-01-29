@@ -352,7 +352,7 @@ const partiesRoutes = new Hono<AppContext>()
         }
 
         // Send invite email via Resend
-        const inviteUrl = `${c.env.NEXT_PUBLIC_URL || "https://chefde.party"}/invite/${party.shareToken}`;
+        const inviteUrl = `${c.env.APP_URL || "https://chefde.party"}/invite/${party.shareToken}`;
 
         const emailRes = await fetch("https://api.resend.com/emails", {
           method: "POST",

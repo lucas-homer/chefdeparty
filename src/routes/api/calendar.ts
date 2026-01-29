@@ -29,7 +29,7 @@ const calendarRoutes = new Hono<AppContext>()
     }
 
     // Build callback URL
-    const origin = c.req.header("origin") || c.env.NEXT_PUBLIC_URL || "https://chefde.party";
+    const origin = c.req.header("origin") || c.env.APP_URL || "https://chefde.party";
     const redirectUri = `${origin}/api/calendar/callback`;
 
     // Use user ID as state for verification
@@ -84,7 +84,7 @@ const calendarRoutes = new Hono<AppContext>()
       return c.redirect("/settings?error=calendar_config");
     }
 
-    const origin = c.req.header("origin") || c.env.NEXT_PUBLIC_URL || "https://chefde.party";
+    const origin = c.req.header("origin") || c.env.APP_URL || "https://chefde.party";
     const redirectUri = `${origin}/api/calendar/callback`;
 
     try {

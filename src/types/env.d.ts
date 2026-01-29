@@ -11,7 +11,7 @@ declare global {
     LANGFUSE_PUBLIC_KEY?: string;
     LANGFUSE_SECRET_KEY?: string;
     CRON_SECRET?: string;
-    NEXT_PUBLIC_URL?: string;
+    APP_URL?: string;
     NODE_ENV?: string;
   }
 }

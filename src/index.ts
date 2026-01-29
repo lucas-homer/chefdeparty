@@ -28,7 +28,7 @@ export interface Env {
   LANGFUSE_PUBLIC_KEY?: string;
   LANGFUSE_SECRET_KEY?: string;
   CRON_SECRET?: string;
-  NEXT_PUBLIC_URL?: string;
+  APP_URL?: string;
   TAVILY_API_KEY?: string;
   ADMIN_EMAILS?: string;
 }

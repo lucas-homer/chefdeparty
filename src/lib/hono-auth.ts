@@ -23,7 +23,7 @@ interface Env {
   AUTH_GOOGLE_ID: string;
   AUTH_GOOGLE_SECRET: string;
   RESEND_API_KEY: string;
-  NEXT_PUBLIC_URL?: string;
+  APP_URL?: string;
   ADMIN_EMAILS?: string;
 }
 
@@ -37,7 +37,7 @@ export interface AuthUser {
 
 // Get the base URL for callbacks
 function getBaseUrl(env: Env): string {
-  return env.NEXT_PUBLIC_URL || "https://chefde.party";
+  return env.APP_URL || "https://chefde.party";
 }
 
 // Create Auth.js configuration for Hono
