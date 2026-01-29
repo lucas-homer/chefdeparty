@@ -9,3 +9,4 @@ export { CalendarCard } from "./calendar-card";
 export { ShareLinkCard } from "./share-link";
 export { ImportRecipe, ImportFromUrl, ImportFromImage } from "./import-recipe";
 export { RecipeChat } from "./recipe-chat";
+export { UserMenu } from "./user-menu";

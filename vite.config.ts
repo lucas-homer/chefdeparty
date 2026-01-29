@@ -20,6 +20,8 @@ export default defineConfig({
         // New feature components
         "import-recipe": path.resolve(__dirname, "client/import-recipe.tsx"),
         "recipe-chat": path.resolve(__dirname, "client/recipe-chat.tsx"),
+        // User menu drawer (loaded on all authenticated pages)
+        "user-menu": path.resolve(__dirname, "client/user-menu.tsx"),
         // Admin components
         admin: path.resolve(__dirname, "client/admin.ts"),
       },
