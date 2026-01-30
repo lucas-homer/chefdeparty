@@ -1,8 +1,9 @@
 import { Hono } from "hono";
 import { zValidator } from "@hono/zod-validator";
-import { eq, and } from "drizzle-orm";
+import { eq, and, or } from "drizzle-orm";
 import { parties, guests, contributionItems } from "../../../drizzle/schema";
 import { rsvpResponseSchema } from "../../lib/schemas";
+import { normalizePhone } from "../../lib/phone";
 import type { Env } from "../../index";
 import type { createDb } from "../../lib/db";
 
@@ -64,7 +65,8 @@ const inviteRoutes = new Hono<AppContext>()
 
     // Handle both form data and JSON
     let name: string;
-    let email: string;
+    let email: string | undefined;
+    let phone: string | undefined;
     let rsvpStatus: string;
     let headcount: number | undefined;
     let dietaryRestrictions: string | undefined;
@@ -74,6 +76,7 @@ const inviteRoutes = new Hono<AppContext>()
       const body = await c.req.json();
       name = body.name;
       email = body.email;
+      phone = body.phone;
       rsvpStatus = body.rsvpStatus;
       headcount = body.headcount;
       dietaryRestrictions = body.dietaryRestrictions;
@@ -81,7 +84,8 @@ const inviteRoutes = new Hono<AppContext>()
     } else {
       const formData = await c.req.parseBody();
       name = formData.name as string;
-      email = formData.email as string;
+      email = formData.email as string | undefined;
+      phone = formData.phone as string | undefined;
       rsvpStatus = formData.rsvpStatus as string;
       headcount = formData.headcount ? parseInt(formData.headcount as string, 10) : undefined;
       dietaryRestrictions = formData.dietaryRestrictions as string | undefined;
@@ -92,15 +96,35 @@ const inviteRoutes = new Hono<AppContext>()
       }
     }
 
-    if (!name || !email || !rsvpStatus) {
-      return c.json({ error: "Name, email, and RSVP status are required" }, 400);
+    // Normalize phone if provided
+    const normalizedPhone = phone ? normalizePhone(phone) : null;
+
+    if (!name || !rsvpStatus) {
+      return c.json({ error: "Name and RSVP status are required" }, 400);
     }
 
-    // Check if guest already exists
-    const [existing] = await db
-      .select()
-      .from(guests)
-      .where(and(eq(guests.partyId, party.id), eq(guests.email, email)));
+    if (!email && !normalizedPhone) {
+      return c.json({ error: "Either email or phone is required" }, 400);
+    }
+
+    // Check if guest already exists (by email or phone)
+    let existing = null;
+
+    if (email) {
+      const [byEmail] = await db
+        .select()
+        .from(guests)
+        .where(and(eq(guests.partyId, party.id), eq(guests.email, email)));
+      if (byEmail) existing = byEmail;
+    }
+
+    if (!existing && normalizedPhone) {
+      const [byPhone] = await db
+        .select()
+        .from(guests)
+        .where(and(eq(guests.partyId, party.id), eq(guests.phone, normalizedPhone)));
+      if (byPhone) existing = byPhone;
+    }
 
     let guest;
 
@@ -118,6 +142,8 @@ const inviteRoutes = new Hono<AppContext>()
         .update(guests)
         .set({
           name,
+          email: email || existing.email, // Keep existing email if not provided
+          phone: normalizedPhone || existing.phone, // Keep existing phone if not provided
           rsvpStatus,
           headcount: rsvpStatus === "yes" ? headcount || 1 : 0,
           dietaryRestrictions: dietaryArray,
@@ -130,7 +156,8 @@ const inviteRoutes = new Hono<AppContext>()
         .insert(guests)
         .values({
           partyId: party.id,
-          email,
+          email: email || null,
+          phone: normalizedPhone,
           name,
           rsvpStatus,
           headcount: rsvpStatus === "yes" ? headcount || 1 : 0,
@@ -163,33 +190,25 @@ const inviteRoutes = new Hono<AppContext>()
     }
 
     // Redirect for form submissions to a thank you page
+    // Include contact info so they can easily create an account
     if (!contentType.includes("application/json")) {
-      return c.redirect(`/invite/${token}/thanks`);
+      const params = new URLSearchParams();
+      if (guest.email) params.set("email", guest.email);
+      if (guest.phone) params.set("phone", guest.phone);
+      if (guest.name) params.set("name", guest.name);
+      const queryString = params.toString();
+      return c.redirect(`/invite/${token}/thanks${queryString ? `?${queryString}` : ""}`);
     }
     return c.json({ success: true, guest });
   })
 
   // GET /api/invite/:token/thanks - Thank you page after RSVP
+  // Now redirects to the page route for a richer experience
   .get("/:token/thanks", async (c) => {
     const token = c.req.param("token");
-    return c.html(`
-      <!DOCTYPE html>
-      <html lang="en">
-        <head>
-          <meta charset="UTF-8">
-          <meta name="viewport" content="width=device-width, initial-scale=1.0">
-          <title>Thanks for RSVPing!</title>
-          <link href="/assets/main.css" rel="stylesheet">
-        </head>
-        <body class="min-h-screen bg-background flex items-center justify-center">
-          <div class="text-center p-8">
-            <h1 class="text-3xl font-bold mb-4">Thanks for your RSVP!</h1>
-            <p class="text-muted-foreground mb-6">We've recorded your response.</p>
-            <a href="/invite/${token}" class="text-primary hover:underline">Back to invitation</a>
-          </div>
-        </body>
-      </html>
-    `);
+    const url = new URL(c.req.url);
+    const queryString = url.search;
+    return c.redirect(`/invite/${token}/thanks${queryString}`);
   });
 
 // Export type for client

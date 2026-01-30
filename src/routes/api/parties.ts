@@ -13,6 +13,7 @@ import {
   users,
   calendarConnections,
   scheduledReminders,
+  smsOptOuts,
 } from "../../../drizzle/schema";
 import { requireAuth, getUser } from "../../lib/hono-auth";
 import {
@@ -27,6 +28,8 @@ import {
 import type { Env } from "../../index";
 import type { createDb } from "../../lib/db";
 import { createAI } from "../../lib/ai";
+import { normalizePhone } from "../../lib/phone";
+import { getTwilioConfig, sendInviteSms } from "../../lib/sms";
 
 type Variables = {
   db: ReturnType<typeof createDb>;
@@ -223,21 +226,41 @@ const partiesRoutes = new Hono<AppContext>()
 
     const data = c.req.valid("json");
 
-    // Check if guest already exists
-    const [existing] = await db
-      .select()
-      .from(guests)
-      .where(and(eq(guests.partyId, partyId), eq(guests.email, data.email)));
+    // Normalize phone if provided
+    const phone = data.phone ? normalizePhone(data.phone) : null;
+    if (data.phone && !phone) {
+      return c.json({ error: "Invalid phone number format" }, 400);
+    }
 
-    if (existing) {
-      return c.json({ error: "Guest with this email already invited" }, 409);
+    // Check if guest already exists (by email or phone)
+    if (data.email) {
+      const [existingByEmail] = await db
+        .select()
+        .from(guests)
+        .where(and(eq(guests.partyId, partyId), eq(guests.email, data.email)));
+
+      if (existingByEmail) {
+        return c.json({ error: "Guest with this email already invited" }, 409);
+      }
+    }
+
+    if (phone) {
+      const [existingByPhone] = await db
+        .select()
+        .from(guests)
+        .where(and(eq(guests.partyId, partyId), eq(guests.phone, phone)));
+
+      if (existingByPhone) {
+        return c.json({ error: "Guest with this phone already invited" }, 409);
+      }
     }
 
     const [guest] = await db
       .insert(guests)
       .values({
         partyId,
-        email: data.email,
+        email: data.email || null,
+        phone: phone,
         name: data.name || null,
         rsvpStatus: data.rsvpStatus || "pending",
         headcount: data.headcount || 1,
@@ -315,7 +338,7 @@ const partiesRoutes = new Hono<AppContext>()
 
     const partyId = c.req.param("id");
     const db = c.get("db");
-    const { emails } = c.req.valid("json");
+    const { emails, phones } = c.req.valid("json");
 
     const party = await verifyPartyOwnership(db, partyId, user.id);
     if (!party) {
@@ -328,68 +351,171 @@ const partiesRoutes = new Hono<AppContext>()
       .from(users)
       .where(eq(users.id, user.id));
 
-    const results: Array<{ email: string; status: "sent" | "failed"; guestId?: string }> = [];
+    const inviteUrl = `${c.env.APP_URL || "https://chefde.party"}/invite/${party.shareToken}`;
+    const results: Array<{
+      type: "email" | "phone";
+      contact: string;
+      status: "sent" | "failed";
+      guestId?: string;
+      error?: string;
+    }> = [];
 
-    for (const email of emails) {
-      try {
-        // Check if guest already exists
-        let [guest] = await db
+    // Send email invites
+    if (emails && emails.length > 0) {
+      for (const email of emails) {
+        try {
+          // Check if guest already exists
+          let [guest] = await db
+            .select()
+            .from(guests)
+            .where(and(eq(guests.partyId, partyId), eq(guests.email, email)));
+
+          if (!guest) {
+            // Create new guest
+            [guest] = await db
+              .insert(guests)
+              .values({
+                partyId,
+                email,
+                name: email.split("@")[0],
+                rsvpStatus: "pending",
+              })
+              .returning();
+          }
+
+          // Send invite email via Resend
+          const emailRes = await fetch("https://api.resend.com/emails", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${c.env.RESEND_API_KEY}`,
+            },
+            body: JSON.stringify({
+              from: "ChefDeParty <noreply@chefde.party>",
+              to: email,
+              subject: `You're invited to ${party.name}!`,
+              html: `
+                <h1>You're Invited!</h1>
+                <p>${hostUser?.name || "Your host"} has invited you to ${party.name}.</p>
+                <p><strong>When:</strong> ${party.dateTime.toLocaleDateString("en-US", {
+                  weekday: "long",
+                  month: "long",
+                  day: "numeric",
+                  year: "numeric",
+                  hour: "numeric",
+                  minute: "2-digit",
+                })}</p>
+                ${party.location ? `<p><strong>Where:</strong> ${party.location}</p>` : ""}
+                ${party.description ? `<p>${party.description}</p>` : ""}
+                <p><a href="${inviteUrl}" style="display: inline-block; padding: 12px 24px; background-color: #000; color: #fff; text-decoration: none; border-radius: 6px;">RSVP Now</a></p>
+              `,
+            }),
+          });
+
+          if (emailRes.ok) {
+            results.push({ type: "email", contact: email, status: "sent", guestId: guest.id });
+          } else {
+            results.push({ type: "email", contact: email, status: "failed" });
+          }
+        } catch (error) {
+          console.error(`Failed to send invite to ${email}:`, error);
+          results.push({ type: "email", contact: email, status: "failed" });
+        }
+      }
+    }
+
+    // Send SMS invites
+    if (phones && phones.length > 0) {
+      const twilioConfig = getTwilioConfig(c.env);
+
+      for (const rawPhone of phones) {
+        const phone = normalizePhone(rawPhone);
+
+        if (!phone) {
+          results.push({
+            type: "phone",
+            contact: rawPhone,
+            status: "failed",
+            error: "Invalid phone number format",
+          });
+          continue;
+        }
+
+        if (!twilioConfig) {
+          results.push({
+            type: "phone",
+            contact: phone,
+            status: "failed",
+            error: "SMS service not configured",
+          });
+          continue;
+        }
+
+        // Check if phone number has opted out
+        const [optOut] = await db
           .select()
-          .from(guests)
-          .where(and(eq(guests.partyId, partyId), eq(guests.email, email)));
+          .from(smsOptOuts)
+          .where(eq(smsOptOuts.phone, phone));
 
-        if (!guest) {
-          // Create new guest
-          [guest] = await db
-            .insert(guests)
-            .values({
-              partyId,
-              email,
-              name: email.split("@")[0],
-              rsvpStatus: "pending",
-            })
-            .returning();
+        if (optOut) {
+          results.push({
+            type: "phone",
+            contact: phone,
+            status: "failed",
+            error: "This number has opted out of SMS messages",
+          });
+          continue;
         }
 
-        // Send invite email via Resend
-        const inviteUrl = `${c.env.APP_URL || "https://chefde.party"}/invite/${party.shareToken}`;
+        try {
+          // Check if guest already exists
+          let [guest] = await db
+            .select()
+            .from(guests)
+            .where(and(eq(guests.partyId, partyId), eq(guests.phone, phone)));
 
-        const emailRes = await fetch("https://api.resend.com/emails", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${c.env.RESEND_API_KEY}`,
-          },
-          body: JSON.stringify({
-            from: "ChefDeParty <noreply@chefde.party>",
-            to: email,
-            subject: `You're invited to ${party.name}!`,
-            html: `
-              <h1>You're Invited!</h1>
-              <p>${hostUser?.name || "Your host"} has invited you to ${party.name}.</p>
-              <p><strong>When:</strong> ${party.dateTime.toLocaleDateString("en-US", {
-                weekday: "long",
-                month: "long",
-                day: "numeric",
-                year: "numeric",
-                hour: "numeric",
-                minute: "2-digit",
-              })}</p>
-              ${party.location ? `<p><strong>Where:</strong> ${party.location}</p>` : ""}
-              ${party.description ? `<p>${party.description}</p>` : ""}
-              <p><a href="${inviteUrl}" style="display: inline-block; padding: 12px 24px; background-color: #000; color: #fff; text-decoration: none; border-radius: 6px;">RSVP Now</a></p>
-            `,
-          }),
-        });
+          if (!guest) {
+            // Create new guest
+            [guest] = await db
+              .insert(guests)
+              .values({
+                partyId,
+                phone,
+                rsvpStatus: "pending",
+              })
+              .returning();
+          }
 
-        if (emailRes.ok) {
-          results.push({ email, status: "sent", guestId: guest.id });
-        } else {
-          results.push({ email, status: "failed" });
+          // Send SMS invite via Twilio
+          const smsResult = await sendInviteSms(
+            twilioConfig,
+            phone,
+            party.name,
+            hostUser?.name || null,
+            inviteUrl
+          );
+
+          if (smsResult.success) {
+            results.push({ type: "phone", contact: phone, status: "sent", guestId: guest.id });
+          } else {
+            // If Twilio reports opt-out, record it in our database
+            if (smsResult.optedOut) {
+              await db
+                .insert(smsOptOuts)
+                .values({ phone })
+                .onConflictDoNothing();
+            }
+            results.push({
+              type: "phone",
+              contact: phone,
+              status: "failed",
+              error: smsResult.error,
+            });
+          }
+        } catch (error) {
+          console.error(`Failed to send SMS invite to ${phone}:`, error);
+          results.push({ type: "phone", contact: phone, status: "failed" });
         }
-      } catch (error) {
-        console.error(`Failed to send invite to ${email}:`, error);
-        results.push({ email, status: "failed" });
       }
     }
 

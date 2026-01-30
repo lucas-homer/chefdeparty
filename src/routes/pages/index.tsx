@@ -1,6 +1,6 @@
 import { Hono } from "hono";
 import { reactRenderer } from "@hono/react-renderer";
-import { eq, and, desc, asc, isNull } from "drizzle-orm";
+import { eq, and, desc, asc, isNull, inArray } from "drizzle-orm";
 import {
   parties,
   recipes,
@@ -12,6 +12,7 @@ import {
   inviteCodes,
   inviteCodeUses,
   users,
+  smsOptOuts,
 } from "../../../drizzle/schema";
 import { requireAuth, getUser } from "../../lib/hono-auth";
 import { isAdmin } from "../../lib/admin";
@@ -310,6 +311,20 @@ pageRoutes.get("/parties/:id/guests", requireAuth, async (c) => {
     .from(guests)
     .where(eq(guests.partyId, partyId));
 
+  // Get opted-out phone numbers for guests with phones
+  const phoneNumbers = guestList
+    .filter((g) => g.phone)
+    .map((g) => g.phone as string);
+
+  let optedOutPhones: Set<string> = new Set();
+  if (phoneNumbers.length > 0) {
+    const optOuts = await db
+      .select({ phone: smsOptOuts.phone })
+      .from(smsOptOuts)
+      .where(inArray(smsOptOuts.phone, phoneNumbers));
+    optedOutPhones = new Set(optOuts.map((o) => o.phone));
+  }
+
   return c.render(
     <Layout title={`Guests - ${party.name}`} user={user} scripts={["/assets/guest-dialog.js"]}>
       <div className="mb-6">
@@ -332,23 +347,35 @@ pageRoutes.get("/parties/:id/guests", requireAuth, async (c) => {
         </div>
       ) : (
         <div className="border rounded-lg divide-y">
-          {guestList.map((guest) => (
-            <div key={guest.id} className="p-4 flex items-center justify-between">
-              <div>
-                <p className="font-medium">{guest.name}</p>
-                {guest.email && (
-                  <p className="text-sm text-muted-foreground">{guest.email}</p>
-                )}
+          {guestList.map((guest) => {
+            const isOptedOut = guest.phone && optedOutPhones.has(guest.phone);
+            return (
+              <div key={guest.id} className="p-4 flex items-center justify-between">
+                <div>
+                  <p className="font-medium">{guest.name || (guest.email ? guest.email.split("@")[0] : guest.phone)}</p>
+                  {guest.email && (
+                    <p className="text-sm text-muted-foreground">{guest.email}</p>
+                  )}
+                  {guest.phone && (
+                    <p className="text-sm text-muted-foreground">
+                      {guest.phone}
+                      {isOptedOut && (
+                        <span className="ml-2 text-xs text-orange-600">(SMS opted out)</span>
+                      )}
+                    </p>
+                  )}
+                </div>
+                <span className={`px-2 py-1 text-xs rounded-full ${
+                  guest.rsvpStatus === "yes" ? "bg-green-100 text-green-800" :
+                  guest.rsvpStatus === "no" ? "bg-red-100 text-red-800" :
+                  guest.rsvpStatus === "maybe" ? "bg-yellow-100 text-yellow-800" :
+                  "bg-gray-100 text-gray-800"
+                }`}>
+                  {guest.rsvpStatus || "pending"}
+                </span>
               </div>
-              <span className={`px-2 py-1 text-xs rounded-full ${
-                guest.rsvpStatus === "attending" ? "bg-green-100 text-green-800" :
-                guest.rsvpStatus === "declined" ? "bg-red-100 text-red-800" :
-                "bg-gray-100 text-gray-800"
-              }`}>
-                {guest.rsvpStatus || "pending"}
-              </span>
-            </div>
-          ))}
+            );
+          })}
         </div>
       )}
     </Layout>
@@ -476,8 +503,14 @@ pageRoutes.get("/parties/:id/contributions", requireAuth, async (c) => {
   }
 
   const contributions = await db
-    .select()
+    .select({
+      id: contributionItems.id,
+      description: contributionItems.description,
+      claimedByGuestId: contributionItems.claimedByGuestId,
+      claimedByName: guests.name,
+    })
     .from(contributionItems)
+    .leftJoin(guests, eq(contributionItems.claimedByGuestId, guests.id))
     .where(eq(contributionItems.partyId, partyId));
 
   return c.render(
@@ -518,9 +551,9 @@ pageRoutes.get("/parties/:id/contributions", requireAuth, async (c) => {
           {contributions.map((item) => (
             <div key={item.id} className="p-4 flex items-center justify-between">
               <div>
-                <p className="font-medium">{item.name}</p>
-                {item.claimedBy && (
-                  <p className="text-sm text-green-600">Claimed by: {item.claimedBy}</p>
+                <p className="font-medium">{item.description}</p>
+                {item.claimedByName && (
+                  <p className="text-sm text-green-600">Claimed by: {item.claimedByName}</p>
                 )}
               </div>
               <form action={`/api/parties/${partyId}/contributions/${item.id}`} method="POST">
@@ -1024,13 +1057,25 @@ pageRoutes.get("/invite/:token", async (c) => {
               />
             </div>
             <div>
-              <label className="block text-sm font-medium mb-1">Your Email *</label>
+              <label className="block text-sm font-medium mb-1">Your Email</label>
               <input
                 type="email"
                 name="email"
-                required
                 className="w-full px-3 py-2 border rounded-md"
+                placeholder="your@email.com"
               />
+            </div>
+            <div>
+              <label className="block text-sm font-medium mb-1">Your Phone</label>
+              <input
+                type="tel"
+                name="phone"
+                className="w-full px-3 py-2 border rounded-md"
+                placeholder="+1 (555) 555-1234"
+              />
+              <p className="text-xs text-muted-foreground mt-1">
+                Provide either email or phone (or both)
+              </p>
             </div>
             <div>
               <label className="block text-sm font-medium mb-1">Will you attend? *</label>
@@ -1096,6 +1141,167 @@ pageRoutes.get("/invite/:token", async (c) => {
           </form>
         </div>
       </div>
+    </PublicLayout>
+  );
+});
+
+// ==================== INVITE THANK YOU PAGE ====================
+
+pageRoutes.get("/invite/:token/thanks", async (c) => {
+  const token = c.req.param("token");
+  const db = c.get("db");
+
+  // Get query params from RSVP
+  const email = c.req.query("email") || "";
+  const phone = c.req.query("phone") || "";
+  const name = c.req.query("name") || "";
+
+  const [party] = await db
+    .select({
+      id: parties.id,
+      name: parties.name,
+      dateTime: parties.dateTime,
+    })
+    .from(parties)
+    .where(eq(parties.shareToken, token));
+
+  if (!party) {
+    return c.redirect("/");
+  }
+
+  const formatDate = (date: Date) => {
+    return date.toLocaleDateString("en-US", {
+      weekday: "long",
+      month: "long",
+      day: "numeric",
+      hour: "numeric",
+      minute: "2-digit",
+    });
+  };
+
+  return c.render(
+    <PublicLayout title="Thanks for your RSVP!">
+      <div className="min-h-screen flex items-center justify-center py-12 px-4">
+        <div className="w-full max-w-md text-center">
+          <div className="mb-8">
+            <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-green-100 flex items-center justify-center">
+              <svg className="w-8 h-8 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7" />
+              </svg>
+            </div>
+            <h1 className="text-3xl font-bold mb-2">Thanks for your RSVP!</h1>
+            <p className="text-muted-foreground">
+              We've received your response for <span className="font-medium text-foreground">{party.name}</span>
+            </p>
+            <p className="text-sm text-muted-foreground mt-1">
+              {formatDate(party.dateTime)}
+            </p>
+          </div>
+
+          {/* Optional Account Creation */}
+          <div className="border rounded-lg p-6 text-left">
+            <h2 className="font-semibold mb-2">Create an Account (Optional)</h2>
+            <p className="text-sm text-muted-foreground mb-4">
+              Create an account to plan your own parties, save recipes, and more.
+            </p>
+
+            {/* Sign up tabs */}
+            <div className="space-y-4" id="signup-options">
+              {/* Email Option */}
+              <div className="border rounded-lg p-4">
+                <h3 className="text-sm font-medium mb-2">Sign up with Email</h3>
+                <form action="/api/auth/signin/email" method="POST">
+                  <input type="hidden" name="csrfToken" value="" id="csrf-token-email" />
+                  <input
+                    type="email"
+                    name="email"
+                    defaultValue={email}
+                    placeholder="your@email.com"
+                    className="w-full px-3 py-2 border rounded-md mb-2"
+                    required
+                  />
+                  <button
+                    type="submit"
+                    className="w-full py-2 px-4 bg-primary text-primary-foreground rounded-md hover:bg-primary/90 text-sm"
+                  >
+                    Continue with Email
+                  </button>
+                </form>
+              </div>
+
+              {/* Phone Option */}
+              <div className="border rounded-lg p-4">
+                <h3 className="text-sm font-medium mb-2">Sign up with Phone</h3>
+                <form action="/api/phone-auth/send-otp" method="POST" id="phone-signup-form">
+                  <input
+                    type="tel"
+                    name="phone"
+                    defaultValue={phone}
+                    placeholder="+1 (555) 555-1234"
+                    className="w-full px-3 py-2 border rounded-md mb-2"
+                    required
+                  />
+                  <button
+                    type="submit"
+                    className="w-full py-2 px-4 bg-primary text-primary-foreground rounded-md hover:bg-primary/90 text-sm"
+                  >
+                    Continue with Phone
+                  </button>
+                </form>
+              </div>
+
+              {/* Google Option */}
+              <div className="border rounded-lg p-4">
+                <h3 className="text-sm font-medium mb-2">Sign up with Google</h3>
+                <form action="/api/auth/signin/google" method="POST">
+                  <input type="hidden" name="csrfToken" value="" id="csrf-token-google" />
+                  <button
+                    type="submit"
+                    className="w-full py-2 px-4 border rounded-md hover:bg-muted text-sm flex items-center justify-center gap-2"
+                  >
+                    <svg className="w-4 h-4" viewBox="0 0 24 24">
+                      <path
+                        fill="currentColor"
+                        d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"
+                      />
+                      <path
+                        fill="currentColor"
+                        d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"
+                      />
+                      <path
+                        fill="currentColor"
+                        d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"
+                      />
+                      <path
+                        fill="currentColor"
+                        d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"
+                      />
+                    </svg>
+                    Continue with Google
+                  </button>
+                </form>
+              </div>
+            </div>
+
+            <p className="text-xs text-muted-foreground mt-4 text-center">
+              Or just close this page - no account needed!
+            </p>
+          </div>
+        </div>
+      </div>
+
+      {/* Script to fetch CSRF token */}
+      <script dangerouslySetInnerHTML={{
+        __html: `
+          fetch('/api/auth/csrf')
+            .then(r => r.json())
+            .then(data => {
+              document.getElementById('csrf-token-email').value = data.csrfToken;
+              document.getElementById('csrf-token-google').value = data.csrfToken;
+            })
+            .catch(() => {});
+        `
+      }} />
     </PublicLayout>
   );
 });
