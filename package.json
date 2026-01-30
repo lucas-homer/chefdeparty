@@ -41,6 +41,7 @@
     "drizzle-orm": "^0.38.3",
     "hono": "^4.6.0",
     "langfuse": "^3.32.0",
+    "libphonenumber-js": "^1.12.35",
     "lucide-react": "^0.563.0",
     "nanoid": "^5.0.9",
     "react": "^19.2.3",
