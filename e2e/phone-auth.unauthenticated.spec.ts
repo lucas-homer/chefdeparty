@@ -10,16 +10,16 @@ test.describe("Login Page - Phone Auth UI", () => {
   test("should display phone tab on login page", async ({ page }) => {
     await page.goto("/login");
 
-    // Should have Email and Phone tabs (using data-tab attribute)
-    await expect(page.locator('button.tab[data-tab="email"]')).toBeVisible();
-    await expect(page.locator('button.tab[data-tab="phone"]')).toBeVisible();
+    // Should have Email and Phone tabs in sign-in view (using data-tab attribute)
+    await expect(page.locator('button.tab[data-tab="signin-email"]')).toBeVisible();
+    await expect(page.locator('button.tab[data-tab="signin-phone"]')).toBeVisible();
   });
 
   test("should show email form by default", async ({ page }) => {
     await page.goto("/login");
 
-    // Email tab should be active by default
-    await expect(page.locator('#email-tab')).toBeVisible();
+    // Email tab should be active by default in sign-in view
+    await expect(page.locator('#signin-email-tab')).toBeVisible();
     await expect(page.getByPlaceholder(/email/i).first()).toBeVisible();
   });
 
@@ -27,38 +27,35 @@ test.describe("Login Page - Phone Auth UI", () => {
     await page.goto("/login");
 
     // Click phone tab and wait for it to become active
-    await page.locator('button.tab[data-tab="phone"]').click();
+    await page.locator('button.tab[data-tab="signin-phone"]').click();
 
     // Wait for phone tab to have active class (becomes visible)
-    await expect(page.locator('#phone-tab.active')).toBeVisible();
+    await expect(page.locator('#signin-phone-tab.active')).toBeVisible();
     // Phone input has placeholder +1 (555) 555-1234
-    await expect(page.locator('#phone-tab').getByPlaceholder(/555.*1234/)).toBeVisible();
+    await expect(page.locator('#signin-phone-tab').getByPlaceholder(/555.*1234/)).toBeVisible();
   });
 
-  test("should show invite code field when toggled", async ({ page }) => {
+  test("should show invite code field when register view toggled", async ({ page }) => {
     await page.goto("/login");
 
-    // Click phone tab first and wait
-    await page.locator('button.tab[data-tab="phone"]').click();
-    await expect(page.locator('#phone-tab.active')).toBeVisible();
+    // Click "First time? I have an invite code" to switch to register view
+    await page.getByText(/have an invite code/i).click();
 
-    // Click "First time here? I have an invite code" (in the phone tab) to show invite code field
-    await page.locator('#phone-tab').getByText(/have an invite code/i).click();
-
-    // Should show invite code input
-    await expect(page.locator('#phone-invite-code')).toBeVisible();
+    // Should show the register view with invite code input
+    await expect(page.locator('#register-view')).toBeVisible();
+    await expect(page.locator('#invite-code')).toBeVisible();
   });
 
   test("should accept phone number input", async ({ page }) => {
     await page.goto("/login");
 
     // Switch to phone tab and wait
-    await page.locator('button.tab[data-tab="phone"]').click();
-    await expect(page.locator('#phone-tab.active')).toBeVisible();
+    await page.locator('button.tab[data-tab="signin-phone"]').click();
+    await expect(page.locator('#signin-phone-tab.active')).toBeVisible();
 
     // Enter a phone number (use valid format: area code 415, exchange 555)
     // Phone input has placeholder +1 (555) 555-1234
-    const phoneInput = page.locator('#phone-tab').getByPlaceholder(/555.*1234/);
+    const phoneInput = page.locator('#signin-phone-tab').getByPlaceholder(/555.*1234/);
     await phoneInput.fill("+1 415 555 1234");
 
     // Verify input value

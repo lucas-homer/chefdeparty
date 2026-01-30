@@ -159,6 +159,7 @@ app.get("/login", (c) => {
           .tab-content.active { display: block; }
           .link-btn { background: none; border: none; color: #6b7280; text-decoration: underline; cursor: pointer; font-size: 0.875rem; }
           .link-btn:hover { color: #000; }
+          .view-toggle { margin-top: 1.5rem; padding-top: 1rem; border-top: 1px solid #e5e7eb; text-align: center; }
         </style>
       </head>
       <body class="min-h-screen bg-background flex items-center justify-center">
@@ -168,156 +169,233 @@ app.get("/login", (c) => {
             <p class="text-muted-foreground mt-2">Plan your perfect dinner party</p>
           </div>
           <div class="border rounded-lg p-6 bg-card">
-            <h2 class="text-xl font-semibold mb-4">Sign in</h2>
-
             ${errorMessage ? `<div class="error-message">${errorMessage}</div>` : ""}
             ${successMessage ? `<div class="info-message">${successMessage}</div>` : ""}
             <div id="message"></div>
 
-            <!-- Auth Method Tabs -->
-            <div class="tabs">
-              <button type="button" class="tab active" data-tab="email" onclick="switchTab('email')">Email</button>
-              <button type="button" class="tab" data-tab="phone" onclick="switchTab('phone')">Phone</button>
+            <!-- Sign In View (default for returning users) -->
+            <div id="signin-view">
+              <h2 class="text-xl font-semibold mb-4">Sign in</h2>
+
+              <!-- Auth Method Tabs -->
+              <div class="tabs">
+                <button type="button" class="tab active" data-tab="signin-email" onclick="switchTab('signin-email')">Email</button>
+                <button type="button" class="tab" data-tab="signin-phone" onclick="switchTab('signin-phone')">Phone</button>
+              </div>
+
+              <!-- Email Tab -->
+              <div id="signin-email-tab" class="tab-content active">
+                <form id="email-form" onsubmit="handleEmailSignIn(event)">
+                  <input type="hidden" name="csrfToken" id="csrf-token-email" value="">
+                  <input type="hidden" name="callbackUrl" value="${callbackUrl}">
+                  <p class="text-sm text-muted-foreground mb-3">
+                    Enter your email and we'll send you a magic link to sign in.
+                  </p>
+                  <input
+                    type="email"
+                    id="email"
+                    name="email"
+                    class="text-input"
+                    placeholder="your@email.com"
+                    required
+                    autocomplete="email"
+                  >
+                  <button type="submit" id="email-btn" class="primary-btn">
+                    Send Magic Link
+                  </button>
+                </form>
+
+                <div class="divider">
+                  <div class="divider-line"></div>
+                  <span class="divider-text">or</span>
+                  <div class="divider-line"></div>
+                </div>
+
+                <!-- Google Sign In -->
+                <form id="google-form" action="/api/auth/signin/google" method="POST">
+                  <input type="hidden" name="csrfToken" id="csrf-token-google" value="">
+                  <input type="hidden" name="callbackUrl" value="${callbackUrl}">
+                  <button type="submit" class="secondary-btn">
+                    <svg class="w-5 h-5" viewBox="0 0 24 24" fill="currentColor">
+                      <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/>
+                      <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/>
+                      <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" fill="#FBBC05"/>
+                      <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/>
+                    </svg>
+                    Continue with Google
+                  </button>
+                </form>
+              </div>
+
+              <!-- Phone Tab -->
+              <div id="signin-phone-tab" class="tab-content">
+                <!-- Step 1: Enter Phone -->
+                <div id="phone-step-1">
+                  <p class="text-sm text-muted-foreground mb-3">
+                    Enter your phone number and we'll send you a verification code.
+                  </p>
+                  <input
+                    type="tel"
+                    id="phone"
+                    class="text-input"
+                    placeholder="+1 (555) 555-1234"
+                    autocomplete="tel"
+                  >
+                  <button type="button" id="send-otp-btn" class="primary-btn" onclick="sendOtp(false)">
+                    Send Code
+                  </button>
+                </div>
+
+                <!-- Step 2: Enter OTP -->
+                <div id="phone-step-2" class="hidden">
+                  <p class="text-sm text-muted-foreground mb-3">
+                    Enter the 6-digit code we sent to <span id="phone-display"></span>
+                  </p>
+                  <input
+                    type="text"
+                    id="otp-code"
+                    class="otp-input"
+                    placeholder="000000"
+                    maxlength="6"
+                    inputmode="numeric"
+                    autocomplete="one-time-code"
+                  >
+                  <button type="button" id="verify-otp-btn" class="primary-btn" onclick="verifyOtp()">
+                    Verify Code
+                  </button>
+                  <p class="helper-text" style="margin-top: 1rem; text-align: center;">
+                    <button type="button" class="link-btn" onclick="backToPhoneInput()">
+                      Use a different number
+                    </button>
+                    <span style="margin: 0 0.5rem; color: #d1d5db;">|</span>
+                    <button type="button" class="link-btn" id="resend-btn" onclick="sendOtp(false)">
+                      Resend code
+                    </button>
+                  </p>
+                </div>
+              </div>
+
+              <!-- Toggle to Register View -->
+              <div class="view-toggle">
+                <button type="button" class="link-btn" onclick="toggleView('register')">
+                  First time? I have an invite code &rarr;
+                </button>
+              </div>
             </div>
 
-            <!-- Email Tab -->
-            <div id="email-tab" class="tab-content active">
-              <form id="email-form" onsubmit="handleEmailSignIn(event)">
-                <input type="hidden" name="csrfToken" id="csrf-token-email" value="">
-                <input type="hidden" name="callbackUrl" value="${callbackUrl}">
-                <p class="text-sm text-muted-foreground mb-3">
-                  Enter your email and we'll send you a magic link to sign in.
+            <!-- Register View (for new users with invite codes) -->
+            <div id="register-view" class="hidden">
+              <h2 class="text-xl font-semibold mb-4">Register</h2>
+              <p class="text-sm text-muted-foreground mb-4">
+                Enter your invite code to create an account
+              </p>
+
+              <input
+                type="text"
+                id="invite-code"
+                class="invite-input"
+                placeholder="INVITE CODE"
+                maxlength="8"
+                autocomplete="off"
+              >
+
+              <!-- Auth Method Tabs -->
+              <div class="tabs">
+                <button type="button" class="tab active" data-tab="register-email" onclick="switchTab('register-email')">Email</button>
+                <button type="button" class="tab" data-tab="register-phone" onclick="switchTab('register-phone')">Phone</button>
+              </div>
+
+              <!-- Email Tab -->
+              <div id="register-email-tab" class="tab-content active">
+                <p class="helper-text" style="margin-bottom: 0.5rem;">
+                  For Google sign-in, enter your Google account email and click "Register with Google" below.
                 </p>
                 <input
                   type="email"
-                  id="email"
-                  name="email"
+                  id="register-email"
                   class="text-input"
                   placeholder="your@email.com"
-                  required
                   autocomplete="email"
                 >
-                <button type="submit" id="email-btn" class="primary-btn">
-                  Send Magic Link
+                <button type="button" id="register-email-btn" class="primary-btn" onclick="registerWithEmail()">
+                  Register with Email
                 </button>
-              </form>
 
-              <div class="divider">
-                <div class="divider-line"></div>
-                <span class="divider-text">or</span>
-                <div class="divider-line"></div>
+                <div class="divider">
+                  <div class="divider-line"></div>
+                  <span class="divider-text">or</span>
+                  <div class="divider-line"></div>
+                </div>
+
+                <!-- Google Register -->
+                <form id="google-register-form" action="/api/auth/signin/google" method="POST" onsubmit="return handleGoogleRegister(event)">
+                  <input type="hidden" name="csrfToken" id="csrf-token-google-register" value="">
+                  <input type="hidden" name="callbackUrl" value="${callbackUrl}">
+                  <button type="submit" class="secondary-btn">
+                    <svg class="w-5 h-5" viewBox="0 0 24 24" fill="currentColor">
+                      <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/>
+                      <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/>
+                      <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" fill="#FBBC05"/>
+                      <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/>
+                    </svg>
+                    Register with Google
+                  </button>
+                </form>
               </div>
 
-              <!-- Google Sign In -->
-              <form id="google-form" action="/api/auth/signin/google" method="POST">
-                <input type="hidden" name="csrfToken" id="csrf-token-google" value="">
-                <input type="hidden" name="callbackUrl" value="${callbackUrl}">
-                <button type="submit" class="secondary-btn">
-                  <svg class="w-5 h-5" viewBox="0 0 24 24" fill="currentColor">
-                    <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/>
-                    <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/>
-                    <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" fill="#FBBC05"/>
-                    <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/>
-                  </svg>
-                  Continue with Google
-                </button>
-              </form>
-
-              <!-- Invite Code Section (for new email users) -->
-              <div class="invite-section">
-                <button type="button" class="invite-toggle" onclick="toggleInviteSection()">
-                  First time here? I have an invite code
-                </button>
-                <div id="invite-fields" class="hidden" style="margin-top: 1rem;">
+              <!-- Phone Tab -->
+              <div id="register-phone-tab" class="tab-content">
+                <!-- Step 1: Enter Phone -->
+                <div id="register-phone-step-1">
                   <p class="text-sm text-muted-foreground mb-3">
-                    Enter your invite code to register. After validation, enter your email above to sign in.
+                    Enter your phone number and we'll send you a verification code.
                   </p>
                   <input
-                    type="text"
-                    id="invite-code"
-                    class="invite-input"
-                    placeholder="INVITE CODE"
-                    maxlength="8"
-                    autocomplete="off"
-                  >
-                  <input
-                    type="email"
-                    id="invite-email"
+                    type="tel"
+                    id="register-phone"
                     class="text-input"
-                    placeholder="your@email.com"
-                    autocomplete="email"
+                    placeholder="+1 (555) 555-1234"
+                    autocomplete="tel"
                   >
-                  <button type="button" id="validate-btn" class="secondary-btn" onclick="validateInviteCode()">
-                    Validate Invite Code
+                  <button type="button" id="register-send-otp-btn" class="primary-btn" onclick="registerWithPhone()">
+                    Register with Phone
                   </button>
-                  <p class="helper-text">After validation, use the email form above to sign in.</p>
                 </div>
-              </div>
-            </div>
 
-            <!-- Phone Tab -->
-            <div id="phone-tab" class="tab-content">
-              <!-- Step 1: Enter Phone -->
-              <div id="phone-step-1">
-                <p class="text-sm text-muted-foreground mb-3">
-                  Enter your phone number and we'll send you a verification code.
-                </p>
-                <input
-                  type="tel"
-                  id="phone"
-                  class="text-input"
-                  placeholder="+1 (555) 555-1234"
-                  autocomplete="tel"
-                >
-                <div id="phone-invite-section" class="hidden" style="margin-bottom: 0.75rem;">
-                  <p class="text-sm text-muted-foreground mb-2">
-                    New user? Enter your invite code:
+                <!-- Step 2: Enter OTP -->
+                <div id="register-phone-step-2" class="hidden">
+                  <p class="text-sm text-muted-foreground mb-3">
+                    Enter the 6-digit code we sent to <span id="register-phone-display"></span>
                   </p>
                   <input
                     type="text"
-                    id="phone-invite-code"
-                    class="invite-input"
-                    placeholder="INVITE CODE"
-                    maxlength="8"
-                    autocomplete="off"
+                    id="register-otp-code"
+                    class="otp-input"
+                    placeholder="000000"
+                    maxlength="6"
+                    inputmode="numeric"
+                    autocomplete="one-time-code"
                   >
-                </div>
-                <button type="button" id="send-otp-btn" class="primary-btn" onclick="sendOtp()">
-                  Send Code
-                </button>
-                <p class="helper-text" style="margin-top: 0.5rem;">
-                  <button type="button" class="link-btn" onclick="togglePhoneInvite()">
-                    First time here? I have an invite code
+                  <button type="button" id="register-verify-otp-btn" class="primary-btn" onclick="verifyRegisterOtp()">
+                    Verify Code
                   </button>
-                </p>
+                  <p class="helper-text" style="margin-top: 1rem; text-align: center;">
+                    <button type="button" class="link-btn" onclick="backToRegisterPhoneInput()">
+                      Use a different number
+                    </button>
+                    <span style="margin: 0 0.5rem; color: #d1d5db;">|</span>
+                    <button type="button" class="link-btn" onclick="registerWithPhone()">
+                      Resend code
+                    </button>
+                  </p>
+                </div>
               </div>
 
-              <!-- Step 2: Enter OTP -->
-              <div id="phone-step-2" class="hidden">
-                <p class="text-sm text-muted-foreground mb-3">
-                  Enter the 6-digit code we sent to <span id="phone-display"></span>
-                </p>
-                <input
-                  type="text"
-                  id="otp-code"
-                  class="otp-input"
-                  placeholder="000000"
-                  maxlength="6"
-                  inputmode="numeric"
-                  autocomplete="one-time-code"
-                >
-                <button type="button" id="verify-otp-btn" class="primary-btn" onclick="verifyOtp()">
-                  Verify Code
+              <!-- Toggle to Sign In View -->
+              <div class="view-toggle">
+                <button type="button" class="link-btn" onclick="toggleView('signin')">
+                  &larr; Already have an account? Sign in
                 </button>
-                <p class="helper-text" style="margin-top: 1rem; text-align: center;">
-                  <button type="button" class="link-btn" onclick="backToPhoneInput()">
-                    Use a different number
-                  </button>
-                  <span style="margin: 0 0.5rem; color: #d1d5db;">|</span>
-                  <button type="button" class="link-btn" id="resend-btn" onclick="sendOtp()">
-                    Resend code
-                  </button>
-                </p>
               </div>
             </div>
           </div>
@@ -325,6 +403,7 @@ app.get("/login", (c) => {
         <script>
           // State
           let currentPhone = '';
+          let currentRegisterPhone = '';
 
           // Fetch CSRF token for Auth.js
           fetch('/api/auth/csrf')
@@ -332,26 +411,40 @@ app.get("/login", (c) => {
             .then(data => {
               document.getElementById('csrf-token-email').value = data.csrfToken;
               document.getElementById('csrf-token-google').value = data.csrfToken;
+              document.getElementById('csrf-token-google-register').value = data.csrfToken;
             })
             .catch(console.error);
 
+          // View switching between sign-in and register
+          function toggleView(view) {
+            const signinView = document.getElementById('signin-view');
+            const registerView = document.getElementById('register-view');
+            const messageDiv = document.getElementById('message');
+            messageDiv.innerHTML = '';
+
+            if (view === 'register') {
+              signinView.classList.add('hidden');
+              registerView.classList.remove('hidden');
+            } else {
+              registerView.classList.add('hidden');
+              signinView.classList.remove('hidden');
+            }
+          }
+
           // Tab switching
           function switchTab(tab) {
-            document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
-            document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
-            document.querySelector('.tab[data-tab="' + tab + '"]').classList.add('active');
+            // Determine which view we're in based on the tab prefix
+            const isRegister = tab.startsWith('register-');
+            const viewPrefix = isRegister ? 'register-' : 'signin-';
+            const viewId = isRegister ? 'register-view' : 'signin-view';
+            const view = document.getElementById(viewId);
+
+            // Only affect tabs within the current view
+            view.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+            view.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+            view.querySelector('.tab[data-tab="' + tab + '"]').classList.add('active');
             document.getElementById(tab + '-tab').classList.add('active');
             document.getElementById('message').innerHTML = '';
-          }
-
-          function toggleInviteSection() {
-            const fields = document.getElementById('invite-fields');
-            fields.classList.toggle('hidden');
-          }
-
-          function togglePhoneInvite() {
-            const section = document.getElementById('phone-invite-section');
-            section.classList.toggle('hidden');
           }
 
           async function handleEmailSignIn(e) {
@@ -396,11 +489,12 @@ app.get("/login", (c) => {
             }
           }
 
-          async function validateInviteCode() {
+          // Register with Email - validates invite code then sends magic link
+          async function registerWithEmail() {
             const code = document.getElementById('invite-code').value.trim();
-            const email = document.getElementById('invite-email').value.trim();
+            const email = document.getElementById('register-email').value.trim();
             const messageDiv = document.getElementById('message');
-            const validateBtn = document.getElementById('validate-btn');
+            const registerBtn = document.getElementById('register-email-btn');
 
             if (!code) {
               messageDiv.innerHTML = '<div class="error-message">Please enter an invite code.</div>';
@@ -411,40 +505,98 @@ app.get("/login", (c) => {
               return;
             }
 
-            validateBtn.disabled = true;
-            validateBtn.textContent = 'Validating...';
+            registerBtn.disabled = true;
+            registerBtn.textContent = 'Validating...';
 
             try {
-              const response = await fetch('/api/invite-codes/validate', {
+              // First validate the invite code
+              const validateResponse = await fetch('/api/invite-codes/validate', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ code, email })
               });
 
-              const data = await response.json();
+              const validateData = await validateResponse.json();
 
-              if (data.valid) {
-                messageDiv.innerHTML = '<div class="success-message">Invite code validated! Now sign in with your email or via Google to complete registration.</div>';
-                document.getElementById('invite-code').disabled = true;
-                document.getElementById('invite-email').disabled = true;
-                document.getElementById('email').value = email;
-                validateBtn.textContent = 'Validated';
-                document.getElementById('invite-fields').classList.add('hidden');
+              if (!validateData.valid) {
+                messageDiv.innerHTML = '<div class="error-message">' + (validateData.error || 'Invalid invite code.') + '</div>';
+                registerBtn.disabled = false;
+                registerBtn.textContent = 'Register with Email';
+                return;
+              }
+
+              // Invite code validated, now send magic link
+              registerBtn.textContent = 'Sending...';
+              const csrfToken = document.getElementById('csrf-token-email').value;
+
+              const response = await fetch('/api/auth/signin/resend', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                body: new URLSearchParams({
+                  csrfToken: csrfToken,
+                  email: email,
+                  callbackUrl: '${callbackUrl}'
+                })
+              });
+
+              if (response.redirected) {
+                window.location.href = response.url;
+              } else if (response.ok) {
+                messageDiv.innerHTML = '<div class="info-message">Check your email! We sent you a sign-in link to complete your registration.</div>';
+                registerBtn.textContent = 'Email Sent';
               } else {
-                messageDiv.innerHTML = '<div class="error-message">' + (data.error || 'Invalid invite code.') + '</div>';
-                validateBtn.disabled = false;
-                validateBtn.textContent = 'Validate Invite Code';
+                throw new Error('Failed to send email');
               }
             } catch (err) {
               messageDiv.innerHTML = '<div class="error-message">An error occurred. Please try again.</div>';
-              validateBtn.disabled = false;
-              validateBtn.textContent = 'Validate Invite Code';
+              registerBtn.disabled = false;
+              registerBtn.textContent = 'Register with Email';
             }
           }
 
-          async function sendOtp() {
+          // Handle Google registration - validates invite code first
+          async function handleGoogleRegister(e) {
+            e.preventDefault();
+            const code = document.getElementById('invite-code').value.trim();
+            const email = document.getElementById('register-email').value.trim();
+            const messageDiv = document.getElementById('message');
+
+            if (!code) {
+              messageDiv.innerHTML = '<div class="error-message">Please enter an invite code.</div>';
+              return false;
+            }
+            if (!email) {
+              messageDiv.innerHTML = '<div class="error-message">Please enter your Google account email.</div>';
+              return false;
+            }
+
+            try {
+              // Validate the invite code first
+              const validateResponse = await fetch('/api/invite-codes/validate', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ code, email })
+              });
+
+              const validateData = await validateResponse.json();
+
+              if (!validateData.valid) {
+                messageDiv.innerHTML = '<div class="error-message">' + (validateData.error || 'Invalid invite code.') + '</div>';
+                return false;
+              }
+
+              // Invite code validated, submit the Google form
+              document.getElementById('google-register-form').submit();
+              return true;
+            } catch (err) {
+              messageDiv.innerHTML = '<div class="error-message">An error occurred. Please try again.</div>';
+              return false;
+            }
+          }
+
+          // Sign-in phone OTP flow
+          async function sendOtp(isResend) {
             const phone = document.getElementById('phone').value.trim();
-            const inviteCode = document.getElementById('phone-invite-code').value.trim();
             const messageDiv = document.getElementById('message');
             const sendBtn = document.getElementById('send-otp-btn');
 
@@ -460,7 +612,7 @@ app.get("/login", (c) => {
               const response = await fetch('/api/phone-auth/send-otp', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ phone, inviteCode: inviteCode || undefined })
+                body: JSON.stringify({ phone })
               });
 
               const data = await response.json();
@@ -473,8 +625,8 @@ app.get("/login", (c) => {
                 messageDiv.innerHTML = '<div class="info-message">Verification code sent! Check your phone.</div>';
                 document.getElementById('otp-code').focus();
               } else if (data.requiresInvite) {
-                document.getElementById('phone-invite-section').classList.remove('hidden');
-                messageDiv.innerHTML = '<div class="error-message">' + (data.error || 'An invite code is required to sign up.') + '</div>';
+                // New user without invite code - prompt them to use register view
+                messageDiv.innerHTML = '<div class="error-message">New user? Please use the "First time? I have an invite code" link below to register.</div>';
                 sendBtn.disabled = false;
                 sendBtn.textContent = 'Send Code';
               } else {
@@ -535,16 +687,109 @@ app.get("/login", (c) => {
             document.getElementById('message').innerHTML = '';
           }
 
-          // Auto-uppercase invite code inputs
+          // Register phone OTP flow
+          async function registerWithPhone() {
+            const code = document.getElementById('invite-code').value.trim();
+            const phone = document.getElementById('register-phone').value.trim();
+            const messageDiv = document.getElementById('message');
+            const sendBtn = document.getElementById('register-send-otp-btn');
+
+            if (!code) {
+              messageDiv.innerHTML = '<div class="error-message">Please enter an invite code.</div>';
+              return;
+            }
+            if (!phone) {
+              messageDiv.innerHTML = '<div class="error-message">Please enter your phone number.</div>';
+              return;
+            }
+
+            sendBtn.disabled = true;
+            sendBtn.textContent = 'Sending...';
+
+            try {
+              const response = await fetch('/api/phone-auth/send-otp', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ phone, inviteCode: code })
+              });
+
+              const data = await response.json();
+
+              if (data.success) {
+                currentRegisterPhone = phone;
+                document.getElementById('register-phone-display').textContent = phone;
+                document.getElementById('register-phone-step-1').classList.add('hidden');
+                document.getElementById('register-phone-step-2').classList.remove('hidden');
+                messageDiv.innerHTML = '<div class="info-message">Verification code sent! Check your phone.</div>';
+                document.getElementById('register-otp-code').focus();
+              } else {
+                messageDiv.innerHTML = '<div class="error-message">' + (data.error || 'Failed to send code.') + '</div>';
+                sendBtn.disabled = false;
+                sendBtn.textContent = 'Register with Phone';
+              }
+            } catch (err) {
+              messageDiv.innerHTML = '<div class="error-message">Failed to send verification code. Please try again.</div>';
+              sendBtn.disabled = false;
+              sendBtn.textContent = 'Register with Phone';
+            }
+          }
+
+          async function verifyRegisterOtp() {
+            const code = document.getElementById('register-otp-code').value.trim();
+            const messageDiv = document.getElementById('message');
+            const verifyBtn = document.getElementById('register-verify-otp-btn');
+
+            if (!code || code.length !== 6) {
+              messageDiv.innerHTML = '<div class="error-message">Please enter the 6-digit code.</div>';
+              return;
+            }
+
+            verifyBtn.disabled = true;
+            verifyBtn.textContent = 'Verifying...';
+
+            try {
+              const response = await fetch('/api/phone-auth/verify-otp', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ phone: currentRegisterPhone, code })
+              });
+
+              const data = await response.json();
+
+              if (data.success) {
+                messageDiv.innerHTML = '<div class="success-message">Verified! Redirecting...</div>';
+                window.location.href = '${callbackUrl}';
+              } else {
+                messageDiv.innerHTML = '<div class="error-message">' + (data.error || 'Invalid code.') + '</div>';
+                verifyBtn.disabled = false;
+                verifyBtn.textContent = 'Verify Code';
+              }
+            } catch (err) {
+              messageDiv.innerHTML = '<div class="error-message">Failed to verify code. Please try again.</div>';
+              verifyBtn.disabled = false;
+              verifyBtn.textContent = 'Verify Code';
+            }
+          }
+
+          function backToRegisterPhoneInput() {
+            document.getElementById('register-phone-step-1').classList.remove('hidden');
+            document.getElementById('register-phone-step-2').classList.add('hidden');
+            document.getElementById('register-otp-code').value = '';
+            document.getElementById('register-send-otp-btn').disabled = false;
+            document.getElementById('register-send-otp-btn').textContent = 'Register with Phone';
+            document.getElementById('message').innerHTML = '';
+          }
+
+          // Auto-uppercase invite code input
           document.getElementById('invite-code').addEventListener('input', function(e) {
             e.target.value = e.target.value.toUpperCase();
           });
-          document.getElementById('phone-invite-code').addEventListener('input', function(e) {
-            e.target.value = e.target.value.toUpperCase();
-          });
 
-          // Only allow numbers in OTP input
+          // Only allow numbers in OTP inputs
           document.getElementById('otp-code').addEventListener('input', function(e) {
+            e.target.value = e.target.value.replace(/[^0-9]/g, '').slice(0, 6);
+          });
+          document.getElementById('register-otp-code').addEventListener('input', function(e) {
             e.target.value = e.target.value.replace(/[^0-9]/g, '').slice(0, 6);
           });
         </script>
