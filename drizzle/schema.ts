@@ -5,10 +5,12 @@ export const users = sqliteTable("users", {
   id: text("id")
     .primaryKey()
     .$defaultFn(() => crypto.randomUUID()),
-  email: text("email").notNull().unique(),
+  email: text("email").unique(), // Nullable - users can sign up with phone only
   name: text("name"),
   image: text("image"),
   emailVerified: integer("email_verified", { mode: "timestamp" }),
+  phone: text("phone").unique(), // E.164 format: +14155551234
+  phoneVerified: integer("phone_verified", { mode: "timestamp" }),
   createdAt: integer("created_at", { mode: "timestamp" })
     .$defaultFn(() => new Date()),
 });
@@ -77,7 +79,8 @@ export const guests = sqliteTable("guests", {
     .notNull()
     .references(() => parties.id, { onDelete: "cascade" }),
   userId: text("user_id").references(() => users.id),
-  email: text("email").notNull(),
+  email: text("email"), // Nullable - guest can be invited by phone only
+  phone: text("phone"), // E.164 format: +14155551234
   name: text("name"),
   rsvpStatus: text("rsvp_status", {
     enum: ["pending", "yes", "no", "maybe"],
@@ -216,9 +219,13 @@ export const inviteCodeUses = sqliteTable("invite_code_uses", {
   ),
 });
 
-// Pending Invites (temporary storage for invite codes before OAuth completes)
+// Pending Invites (temporary storage for invite codes before OAuth/OTP completes)
 export const pendingInvites = sqliteTable("pending_invites", {
-  email: text("email").primaryKey(),
+  id: text("id")
+    .primaryKey()
+    .$defaultFn(() => crypto.randomUUID()),
+  email: text("email").unique(), // Nullable - can use phone instead
+  phone: text("phone").unique(), // E.164 format: +14155551234
   code: text("code").notNull(),
   inviteCodeId: text("invite_code_id")
     .notNull()
@@ -226,6 +233,39 @@ export const pendingInvites = sqliteTable("pending_invites", {
   createdAt: integer("created_at", { mode: "timestamp" }).$defaultFn(
     () => new Date()
   ),
+});
+
+// Phone Verification Tokens (for OTP tracking with Twilio)
+export const phoneVerificationTokens = sqliteTable("phone_verification_tokens", {
+  id: text("id")
+    .primaryKey()
+    .$defaultFn(() => crypto.randomUUID()),
+  phone: text("phone").notNull(), // E.164 format
+  twilioSid: text("twilio_sid").notNull().unique(), // Twilio verification SID
+  attempts: integer("attempts").default(0), // Failed verification attempts
+  expires: integer("expires", { mode: "timestamp" }).notNull(),
+  createdAt: integer("created_at", { mode: "timestamp" }).$defaultFn(
+    () => new Date()
+  ),
+});
+
+// Rate Limits (for OTP rate limiting)
+export const rateLimits = sqliteTable("rate_limits", {
+  key: text("key").notNull(),
+  keyType: text("key_type").notNull(), // "phone" or "ip"
+  count: integer("count").default(0),
+  lockedUntil: integer("locked_until"),
+  updatedAt: integer("updated_at").notNull(),
+}, () => ({
+  // Composite primary key defined in migration
+}));
+
+// SMS Opt-Outs (track phone numbers that have opted out of SMS)
+export const smsOptOuts = sqliteTable("sms_opt_outs", {
+  phone: text("phone").primaryKey().notNull(), // E.164 format
+  optedOutAt: integer("opted_out_at", { mode: "timestamp" })
+    .$defaultFn(() => new Date()),
+  twilioMessageSid: text("twilio_message_sid"), // The SID of the STOP message
 });
 
 // Scheduled Reminders (for users without calendar sync)
@@ -336,3 +376,12 @@ export type NewInviteCodeUse = typeof inviteCodeUses.$inferInsert;
 
 export type PendingInvite = typeof pendingInvites.$inferSelect;
 export type NewPendingInvite = typeof pendingInvites.$inferInsert;
+
+export type PhoneVerificationToken = typeof phoneVerificationTokens.$inferSelect;
+export type NewPhoneVerificationToken = typeof phoneVerificationTokens.$inferInsert;
+
+export type RateLimit = typeof rateLimits.$inferSelect;
+export type NewRateLimit = typeof rateLimits.$inferInsert;
+
+export type SmsOptOut = typeof smsOptOuts.$inferSelect;
+export type NewSmsOptOut = typeof smsOptOuts.$inferInsert;
