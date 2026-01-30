@@ -4,6 +4,8 @@ import { partiesRoutes } from "./parties";
 import { calendarRoutes } from "./calendar";
 import { inviteRoutes } from "./invite";
 import { inviteCodesRoutes } from "./invite-codes";
+import { phoneAuthRoutes } from "./phone-auth";
+import { webhookRoutes } from "./webhooks";
 import type { Env } from "../../index";
 import type { createDb } from "../../lib/db";
 
@@ -19,7 +21,9 @@ const apiRoutes = new Hono<AppContext>()
   .route("/parties", partiesRoutes)
   .route("/calendar", calendarRoutes)
   .route("/invite", inviteRoutes)
-  .route("/invite-codes", inviteCodesRoutes);
+  .route("/invite-codes", inviteCodesRoutes)
+  .route("/phone-auth", phoneAuthRoutes)
+  .route("/webhooks", webhookRoutes);
 
 // Export aggregated type for client
 export type ApiRoutes = typeof apiRoutes;
@@ -31,3 +35,5 @@ export type { PartiesRoutes } from "./parties";
 export type { CalendarRoutes } from "./calendar";
 export type { InviteRoutes } from "./invite";
 export type { InviteCodesRoutes } from "./invite-codes";
+export type { PhoneAuthRoutes } from "./phone-auth";
+export type { WebhookRoutes } from "./webhooks";

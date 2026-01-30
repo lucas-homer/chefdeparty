@@ -93,15 +93,22 @@ export const updatePartySchema = createPartySchema.partial();
 
 export const rsvpStatusSchema = z.enum(["pending", "yes", "no", "maybe"]);
 
-export const createGuestSchema = z.object({
+// Base guest schema without refinement (for partial/updates)
+const baseGuestSchema = z.object({
   name: z.string().optional(),
-  email: z.string().email("Please provide a valid email"),
+  email: z.string().email("Please provide a valid email").optional(),
+  phone: z.string().optional(), // E.164 format preferred
   rsvpStatus: rsvpStatusSchema.optional(),
   headcount: z.number().int().positive().optional(),
   dietaryRestrictions: z.array(z.string()).optional(),
 });
 
-export const updateGuestSchema = createGuestSchema.partial();
+export const createGuestSchema = baseGuestSchema.refine(
+  (data) => data.email || data.phone,
+  { message: "Either email or phone is required" }
+);
+
+export const updateGuestSchema = baseGuestSchema.partial();
 
 // ============================================
 // Party Menu Schemas
@@ -139,8 +146,12 @@ export const updateTimelineTaskSchema = z.object({
 // ============================================
 
 export const inviteGuestsSchema = z.object({
-  emails: z.array(z.string().email()).min(1, "At least one email is required"),
-});
+  emails: z.array(z.string().email()).optional(),
+  phones: z.array(z.string()).optional(), // Phone numbers to invite
+}).refine(
+  (data) => (data.emails && data.emails.length > 0) || (data.phones && data.phones.length > 0),
+  { message: "At least one email or phone is required" }
+);
 
 export const rsvpResponseSchema = z.object({
   rsvpStatus: rsvpStatusSchema,
@@ -188,3 +199,20 @@ export type UpdateTimelineTask = z.infer<typeof updateTimelineTaskSchema>;
 
 export type InviteGuests = z.infer<typeof inviteGuestsSchema>;
 export type RsvpResponse = z.infer<typeof rsvpResponseSchema>;
+
+// ============================================
+// Phone Auth Schemas
+// ============================================
+
+export const sendOtpSchema = z.object({
+  phone: z.string().min(1, "Phone number is required"),
+  inviteCode: z.string().optional(), // For new user registration
+});
+
+export const verifyOtpSchema = z.object({
+  phone: z.string().min(1, "Phone number is required"),
+  code: z.string().length(6, "Code must be 6 digits").regex(/^\d{6}$/, "Code must be 6 digits"),
+});
+
+export type SendOtp = z.infer<typeof sendOtpSchema>;
+export type VerifyOtp = z.infer<typeof verifyOtpSchema>;
