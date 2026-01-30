@@ -9,6 +9,7 @@ import {
   testParties,
   testGuests,
   testRecipes,
+  testContributionItems,
   testTimelineTasks,
   testSessions,
 } from "./seed-data";
@@ -55,6 +56,9 @@ export async function clearDatabase(): Promise<void> {
     "pending_invites",
     "invite_codes",
     "calendar_connections",
+    "phone_verification_tokens",
+    "rate_limits",
+    "sms_opt_outs",
     "users",
   ];
 
@@ -141,6 +145,21 @@ export async function seedDatabase(): Promise<void> {
   }
   console.log(`Seeded ${testGuests.length} guests`);
 
+  // Insert contribution items
+  for (const item of testContributionItems) {
+    execSql(`
+      INSERT INTO contribution_items (id, party_id, description, claimed_by_guest_id, created_at)
+      VALUES (
+        '${item.id}',
+        '${item.partyId}',
+        '${item.description.replace(/'/g, "''")}',
+        ${item.claimedByGuestId ? `'${item.claimedByGuestId}'` : "NULL"},
+        ${Math.floor(item.createdAt.getTime() / 1000)}
+      )
+    `);
+  }
+  console.log(`Seeded ${testContributionItems.length} contribution items`);
+
   // Insert recipes
   for (const recipe of testRecipes) {
     execSql(`
@@ -221,6 +240,7 @@ export {
   testParties,
   testGuests,
   testRecipes,
+  testContributionItems,
   testTimelineTasks,
   testSessions,
 };

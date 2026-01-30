@@ -152,6 +152,31 @@ export const testRecipes = [
   },
 ];
 
+// Test contribution items
+export const testContributionItems = [
+  {
+    id: "test-contribution-1",
+    partyId: testParties.upcoming.id,
+    description: "Bottle of wine",
+    claimedByGuestId: null,
+    createdAt: new Date(),
+  },
+  {
+    id: "test-contribution-2",
+    partyId: testParties.upcoming.id,
+    description: "Dessert",
+    claimedByGuestId: "test-guest-1", // Claimed by Alice
+    createdAt: new Date(),
+  },
+  {
+    id: "test-contribution-3",
+    partyId: testParties.upcoming.id,
+    description: "Chips and salsa",
+    claimedByGuestId: null,
+    createdAt: new Date(),
+  },
+];
+
 // Test timeline tasks
 export const testTimelineTasks = [
   {
