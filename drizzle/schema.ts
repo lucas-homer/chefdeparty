@@ -268,6 +268,117 @@ export const smsOptOuts = sqliteTable("sms_opt_outs", {
   twilioMessageSid: text("twilio_message_sid"), // The SID of the STOP message
 });
 
+// Wizard Sessions (for party wizard chat persistence)
+// JSON fields store serialized versions of types from wizard-schemas.ts
+// Use WizardSessionRow for raw DB data, convert with deserializeWizardSession()
+export const wizardSessions = sqliteTable("wizard_sessions", {
+  id: text("id")
+    .primaryKey()
+    .$defaultFn(() => crypto.randomUUID()),
+  userId: text("user_id")
+    .notNull()
+    .references(() => users.id, { onDelete: "cascade" }),
+  currentStep: text("current_step", {
+    enum: ["party-info", "guests", "menu", "timeline"],
+  })
+    .notNull()
+    .default("party-info"),
+  // JSON fields - dates stored as ISO strings, parsed at boundary
+  partyInfo: text("party_info", { mode: "json" }).$type<SerializedPartyInfo | null>(),
+  guestList: text("guest_list", { mode: "json" })
+    .notNull()
+    .$type<SerializedGuestData[]>()
+    .default([]),
+  menuPlan: text("menu_plan", { mode: "json" }).$type<SerializedMenuPlan | null>(),
+  timeline: text("timeline", { mode: "json" }).$type<SerializedTimelineTask[] | null>(),
+  status: text("status", {
+    enum: ["active", "completed", "abandoned"],
+  })
+    .notNull()
+    .default("active"),
+  partyId: text("party_id").references(() => parties.id, { onDelete: "set null" }),
+  createdAt: integer("created_at", { mode: "timestamp" })
+    .$defaultFn(() => new Date()),
+  updatedAt: integer("updated_at", { mode: "timestamp" })
+    .$defaultFn(() => new Date()),
+});
+
+// Wizard Messages (chat history for each wizard session/step)
+export const wizardMessages = sqliteTable("wizard_messages", {
+  id: text("id")
+    .primaryKey()
+    .$defaultFn(() => crypto.randomUUID()),
+  sessionId: text("session_id")
+    .notNull()
+    .references(() => wizardSessions.id, { onDelete: "cascade" }),
+  step: text("step", {
+    enum: ["party-info", "guests", "menu", "timeline"],
+  }).notNull(),
+  message: text("message", { mode: "json" }).notNull().$type<SerializedUIMessage>(),
+  createdAt: integer("created_at", { mode: "timestamp" })
+    .$defaultFn(() => new Date()),
+});
+
+// Serialized types for JSON storage (dates as ISO strings)
+// These mirror the types in wizard-schemas.ts but with string dates
+export interface SerializedPartyInfo {
+  name: string;
+  dateTime: string; // ISO string
+  location?: string;
+  description?: string;
+  allowContributions?: boolean;
+}
+
+export interface SerializedGuestData {
+  name?: string;
+  email?: string;
+  phone?: string;
+}
+
+export interface SerializedMenuPlan {
+  existingRecipes: Array<{
+    recipeId: string;
+    name: string;
+    course?: string;
+    scaledServings?: number;
+  }>;
+  newRecipes: Array<{
+    name: string;
+    description?: string;
+    sourceUrl?: string;
+    sourceType?: string;
+    ingredients: Array<{ amount?: string; unit?: string; ingredient: string; notes?: string }>;
+    instructions: Array<{ step: number; description: string }>;
+    prepTimeMinutes?: number | null;
+    cookTimeMinutes?: number | null;
+    servings?: number | null;
+    tags?: string[];
+    dietaryTags?: string[];
+    course?: string;
+  }>;
+  dietaryRestrictions?: string[];
+  ambitionLevel?: string;
+}
+
+export interface SerializedTimelineTask {
+  recipeId?: string | null;
+  recipeName?: string;
+  description: string;
+  daysBeforeParty: number;
+  scheduledTime: string;
+  durationMinutes: number;
+  isPhaseStart?: boolean;
+  phaseDescription?: string;
+}
+
+export interface SerializedUIMessage {
+  id: string;
+  role: "user" | "assistant" | "system";
+  content?: string;
+  parts: Array<Record<string, unknown>>;
+  createdAt?: string;
+}
+
 // Scheduled Reminders (for users without calendar sync)
 // Each task gets its own reminder, scheduled for X minutes before task start
 export const scheduledReminders = sqliteTable("scheduled_reminders", {
@@ -313,6 +424,11 @@ export const calendarConnections = sqliteTable("calendar_connections", {
 });
 
 // Type definitions for JSON fields
+
+// Wizard session JSON fields use unknown - actual types are in wizard-schemas.ts
+// Serialization helpers convert between DB (string dates) and runtime (Date objects)
+
+// Recipe types
 export interface Ingredient {
   amount?: string; // "1", "1/2", "2-3", "" for "to taste"
   unit?: string; // "cup", "tablespoon", "" for countables like "eggs"
@@ -385,3 +501,9 @@ export type NewRateLimit = typeof rateLimits.$inferInsert;
 
 export type SmsOptOut = typeof smsOptOuts.$inferSelect;
 export type NewSmsOptOut = typeof smsOptOuts.$inferInsert;
+
+export type WizardSession = typeof wizardSessions.$inferSelect;
+export type NewWizardSession = typeof wizardSessions.$inferInsert;
+
+export type WizardMessage = typeof wizardMessages.$inferSelect;
+export type NewWizardMessage = typeof wizardMessages.$inferInsert;

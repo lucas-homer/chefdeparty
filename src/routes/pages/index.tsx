@@ -110,65 +110,80 @@ pageRoutes.get("/parties", requireAuth, async (c) => {
   );
 });
 
-// GET /parties/new - Create party form
+// GET /parties/new - Redirect to wizard (show choice modal)
 pageRoutes.get("/parties/new", requireAuth, async (c) => {
   const user = getUser(c);
   if (!user) return c.redirect("/login");
 
+  // Check for ?mode=manual query param to skip wizard
+  const mode = c.req.query("mode");
+  if (mode === "manual") {
+    return c.render(
+      <Layout title="New Party - ChefDeParty" user={user}>
+        <div className="max-w-xl mx-auto">
+          <h1 className="text-2xl font-bold mb-6">Create New Party</h1>
+          <form action="/api/parties" method="POST" className="space-y-4">
+            <div>
+              <label className="block text-sm font-medium mb-1">Party Name</label>
+              <input
+                type="text"
+                name="name"
+                required
+                className="w-full px-3 py-2 border rounded-md"
+                placeholder="My Dinner Party"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium mb-1">Date & Time</label>
+              <input
+                type="datetime-local"
+                name="dateTime"
+                required
+                className="w-full px-3 py-2 border rounded-md"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium mb-1">Location</label>
+              <input
+                type="text"
+                name="location"
+                className="w-full px-3 py-2 border rounded-md"
+                placeholder="123 Main St"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium mb-1">Description</label>
+              <textarea
+                name="description"
+                className="w-full px-3 py-2 border rounded-md min-h-[100px]"
+                placeholder="What's the occasion?"
+              />
+            </div>
+            <div className="flex gap-4">
+              <button
+                type="submit"
+                className="px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90"
+              >
+                Create Party
+              </button>
+              <a href="/parties" className="px-4 py-2 border rounded-md hover:bg-muted">
+                Cancel
+              </a>
+            </div>
+          </form>
+        </div>
+      </Layout>
+    );
+  }
+
+  // Default: show wizard with choice modal
   return c.render(
-    <Layout title="New Party - ChefDeParty" user={user}>
-      <div className="max-w-xl mx-auto">
-        <h1 className="text-2xl font-bold mb-6">Create New Party</h1>
-        <form action="/api/parties" method="POST" className="space-y-4">
-          <div>
-            <label className="block text-sm font-medium mb-1">Party Name</label>
-            <input
-              type="text"
-              name="name"
-              required
-              className="w-full px-3 py-2 border rounded-md"
-              placeholder="My Dinner Party"
-            />
-          </div>
-          <div>
-            <label className="block text-sm font-medium mb-1">Date & Time</label>
-            <input
-              type="datetime-local"
-              name="dateTime"
-              required
-              className="w-full px-3 py-2 border rounded-md"
-            />
-          </div>
-          <div>
-            <label className="block text-sm font-medium mb-1">Location</label>
-            <input
-              type="text"
-              name="location"
-              className="w-full px-3 py-2 border rounded-md"
-              placeholder="123 Main St"
-            />
-          </div>
-          <div>
-            <label className="block text-sm font-medium mb-1">Description</label>
-            <textarea
-              name="description"
-              className="w-full px-3 py-2 border rounded-md min-h-[100px]"
-              placeholder="What's the occasion?"
-            />
-          </div>
-          <div className="flex gap-4">
-            <button
-              type="submit"
-              className="px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90"
-            >
-              Create Party
-            </button>
-            <a href="/parties" className="px-4 py-2 border rounded-md hover:bg-muted">
-              Cancel
-            </a>
-          </div>
-        </form>
-      </div>
+    <Layout
+      title="New Party - ChefDeParty"
+      user={user}
+      scripts={["/assets/party-wizard.js"]}
+    >
+      <div id="party-wizard-root" data-manual-url="/parties/new?mode=manual" />
     </Layout>
   );
 });

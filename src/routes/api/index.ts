@@ -6,6 +6,7 @@ import { inviteRoutes } from "./invite";
 import { inviteCodesRoutes } from "./invite-codes";
 import { phoneAuthRoutes } from "./phone-auth";
 import { webhookRoutes } from "./webhooks";
+import { partyWizardRoutes } from "./party-wizard";
 import type { Env } from "../../index";
 import type { createDb } from "../../lib/db";
 
@@ -19,6 +20,7 @@ type AppContext = { Bindings: Env; Variables: Variables };
 const apiRoutes = new Hono<AppContext>()
   .route("/recipes", recipesRoutes)
   .route("/parties", partiesRoutes)
+  .route("/parties/wizard", partyWizardRoutes)
   .route("/calendar", calendarRoutes)
   .route("/invite", inviteRoutes)
   .route("/invite-codes", inviteCodesRoutes)
@@ -37,3 +39,4 @@ export type { InviteRoutes } from "./invite";
 export type { InviteCodesRoutes } from "./invite-codes";
 export type { PhoneAuthRoutes } from "./phone-auth";
 export type { WebhookRoutes } from "./webhooks";
+export type { PartyWizardRoutes } from "./party-wizard";
