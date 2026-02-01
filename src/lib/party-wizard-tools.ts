@@ -92,28 +92,63 @@ export function getWizardTools(step: WizardStep, context: ToolContext): ToolSet 
       return {
         confirmPartyInfo: tool({
           description:
-            "Confirm the party details when you have gathered all required information (name and date/time). Call this to request user confirmation before moving to the next step.",
+            "Save and confirm the party details. Call this when you have gathered the required information (party name and date/time). This shows a confirmation dialog to the user.",
           inputSchema: confirmPartyInfoToolSchema,
+          inputExamples: [
+            { input: { name: "Sarah's 30th Birthday", dateTime: "2024-03-15T19:00:00", location: "My apartment", allowContributions: true } },
+            { input: { name: "Summer BBQ", dateTime: "2024-07-04T16:00:00", description: "Casual backyard cookout", allowContributions: false } },
+            { input: { name: "Dinner Party", dateTime: "2024-02-14T18:30:00", allowContributions: false } },
+          ] as const,
           execute: async (data) => {
+            console.log("[confirmPartyInfo] Tool called with:", JSON.stringify(data));
+
+            // Parse the date - try ISO first, then try natural language with chrono
+            let parsedDate: Date;
+            const directParse = new Date(data.dateTime);
+            if (!isNaN(directParse.getTime())) {
+              parsedDate = directParse;
+            } else {
+              // If direct parse fails, try to construct a date from natural language
+              // For now, create a date a week from now as fallback and log the issue
+              console.log("[confirmPartyInfo] WARNING: Could not parse date:", data.dateTime);
+              // Try a simple parse for common patterns like "feb 6 at 7pm"
+              const now = new Date();
+              const year = now.getFullYear();
+              // Simple attempt: try adding the year
+              const withYear = new Date(`${data.dateTime} ${year}`);
+              if (!isNaN(withYear.getTime())) {
+                parsedDate = withYear;
+              } else {
+                // Last resort: use a week from now
+                parsedDate = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
+                console.log("[confirmPartyInfo] Using fallback date:", parsedDate);
+              }
+            }
+
+            // Convert string dateTime to Date for PartyInfoData
             const partyInfo: PartyInfoData = {
               name: data.name,
-              dateTime: data.dateTime,
+              dateTime: parsedDate,
               location: data.location,
               description: data.description,
               allowContributions: data.allowContributions || false,
             };
+
+            console.log("[confirmPartyInfo] PartyInfo created:", JSON.stringify(partyInfo));
 
             // Save the data to session (but don't change step yet - wait for user approval)
             await updateSessionState(db, userId, sessionId, {
               partyInfo,
             });
 
+            console.log("[confirmPartyInfo] Session updated");
+
             // Create confirmation request
             const request: StepConfirmationRequest = {
               id: crypto.randomUUID(),
               step: "party-info",
               nextStep: "guests",
-              summary: `Party: ${data.name} on ${new Date(data.dateTime).toLocaleDateString("en-US", {
+              summary: `Party: ${data.name} on ${parsedDate.toLocaleDateString("en-US", {
                 weekday: "long",
                 month: "long",
                 day: "numeric",
@@ -124,12 +159,17 @@ export function getWizardTools(step: WizardStep, context: ToolContext): ToolSet 
               data: { partyInfo },
             };
 
+            console.log("[confirmPartyInfo] Request created:", JSON.stringify(request));
+
             // Emit data part for HITL confirmation UI
             if (writer) {
+              console.log("[confirmPartyInfo] Writing data part to stream");
               writer.write({
                 type: "data-step-confirmation-request",
                 data: { request },
               });
+            } else {
+              console.log("[confirmPartyInfo] WARNING: No writer available!");
             }
 
             return {
@@ -145,8 +185,14 @@ export function getWizardTools(step: WizardStep, context: ToolContext): ToolSet 
       return {
         addGuest: tool({
           description:
-            "Add a guest to the party. Requires at least an email OR phone number. Name is optional.",
+            "Add a guest to the party invitation list. Call this IMMEDIATELY when the user provides any guest contact information - do not just acknowledge in text. Requires at least an email OR phone number.",
           inputSchema: addGuestToolSchema,
+          inputExamples: [
+            { input: { name: "Sarah", email: "sarah@example.com" } },
+            { input: { email: "friend@test.com" } },
+            { input: { name: "Mom", phone: "+1-555-123-4567" } },
+            { input: { name: "John Smith", email: "john@work.com", phone: "555-0123" } },
+          ] as const,
           execute: async (data) => {
             const guestList: GuestData[] = [...(currentData.guestList || [])];
             guestList.push({
@@ -154,6 +200,9 @@ export function getWizardTools(step: WizardStep, context: ToolContext): ToolSet 
               email: data.email,
               phone: data.phone,
             });
+
+            // Update currentData in place so subsequent tool calls see the change
+            currentData.guestList = guestList;
 
             // Persist to session
             await updateSessionState(db, userId, sessionId, { guestList });
@@ -167,14 +216,22 @@ export function getWizardTools(step: WizardStep, context: ToolContext): ToolSet 
           },
         }),
         removeGuest: tool({
-          description: "Remove a guest from the list by their index (0-based).",
+          description:
+            "Remove a guest from the invitation list. Call this when the user wants to remove someone they previously added.",
           inputSchema: removeGuestToolSchema,
+          inputExamples: [
+            { input: { index: 0 } },
+            { input: { index: 2 } },
+          ] as const,
           execute: async (data) => {
             const guestList: GuestData[] = [...(currentData.guestList || [])];
             if (data.index < 0 || data.index >= guestList.length) {
               return { success: false, error: "Invalid guest index" };
             }
             const removed = guestList.splice(data.index, 1)[0];
+
+            // Update currentData in place so subsequent tool calls see the change
+            currentData.guestList = guestList;
 
             // Persist to session
             await updateSessionState(db, userId, sessionId, { guestList });
@@ -189,8 +246,11 @@ export function getWizardTools(step: WizardStep, context: ToolContext): ToolSet 
         }),
         confirmGuestList: tool({
           description:
-            "Confirm the guest list and request user approval to move to the next step. Can be called even with an empty list.",
+            "Finalize the guest list and show confirmation to the user. Call this when the user indicates they're done adding guests, or wants to proceed. Can be called with an empty list - guests can be added later.",
           inputSchema: z.object({}),
+          inputExamples: [
+            { input: {} },
+          ] as const,
           execute: async () => {
             const guestList = currentData.guestList || [];
             const guestCount = guestList.length;
@@ -228,8 +288,12 @@ export function getWizardTools(step: WizardStep, context: ToolContext): ToolSet 
       return {
         addExistingRecipe: tool({
           description:
-            "Add a recipe from the user's library to the party menu. Use the recipe ID from the available recipes list.",
+            "Add a recipe from the user's existing library to the menu. Use the recipe ID shown in the user-recipes list. Call this when the user wants to use one of their saved recipes.",
           inputSchema: addExistingRecipeToolSchema,
+          inputExamples: [
+            { input: { recipeId: "550e8400-e29b-41d4-a716-446655440000" } },
+            { input: { recipeId: "550e8400-e29b-41d4-a716-446655440001", course: "main", scaledServings: 8 } },
+          ] as const,
           execute: async (data) => {
             // Verify recipe exists and belongs to user
             const [recipe] = await db
@@ -254,6 +318,9 @@ export function getWizardTools(step: WizardStep, context: ToolContext): ToolSet 
               },
             ];
 
+            // Update currentData in place so subsequent tool calls see the change
+            currentData.menuPlan = menuPlan;
+
             // Persist to session
             await updateSessionState(db, userId, sessionId, { menuPlan });
 
@@ -267,8 +334,12 @@ export function getWizardTools(step: WizardStep, context: ToolContext): ToolSet 
         }),
         extractRecipeFromUrl: tool({
           description:
-            "Import a recipe from a URL. The recipe will be extracted and added to the menu.",
+            "Import a recipe from a website URL. Call this when the user pastes or shares a recipe link. The recipe content will be extracted and added to the menu.",
           inputSchema: extractRecipeFromUrlToolSchema,
+          inputExamples: [
+            { input: { url: "https://www.seriouseats.com/classic-beef-stew-recipe" } },
+            { input: { url: "https://cooking.nytimes.com/recipes/1234", course: "main" } },
+          ] as const,
           execute: async (data) => {
             const { generateObject } = await import("ai");
             const { createAI } = await import("./ai");
@@ -318,6 +389,9 @@ export function getWizardTools(step: WizardStep, context: ToolContext): ToolSet 
               },
             ];
 
+            // Update currentData in place so subsequent tool calls see the change
+            currentData.menuPlan = menuPlan;
+
             // Persist to session
             await updateSessionState(db, userId, sessionId, { menuPlan });
 
@@ -332,8 +406,13 @@ export function getWizardTools(step: WizardStep, context: ToolContext): ToolSet 
         }),
         generateRecipeIdea: tool({
           description:
-            "Generate a new recipe based on a description. Good for when the user describes a dish they want.",
+            "Create a new recipe based on a description. Call this when the user describes a dish they want to make but don't have a specific recipe for. Generates a complete recipe with ingredients and instructions.",
           inputSchema: generateRecipeIdeaToolSchema,
+          inputExamples: [
+            { input: { description: "a light summer salad with citrus and avocado" } },
+            { input: { description: "classic beef bourguignon", course: "main" } },
+            { input: { description: "easy chocolate mousse", course: "dessert" } },
+          ] as const,
           execute: async (data) => {
             const { generateObject } = await import("ai");
             const { createAI } = await import("./ai");
@@ -366,6 +445,9 @@ Make the recipe practical and achievable for a home cook.`,
               },
             ];
 
+            // Update currentData in place so subsequent tool calls see the change
+            currentData.menuPlan = menuPlan;
+
             // Persist to session
             await updateSessionState(db, userId, sessionId, { menuPlan });
 
@@ -380,8 +462,12 @@ Make the recipe practical and achievable for a home cook.`,
         }),
         removeMenuItem: tool({
           description:
-            "Remove an item from the menu. Specify index and whether it's from existingRecipes or newRecipes.",
+            "Remove a dish from the menu. Call this when the user wants to remove something they previously added. Use isNewRecipe=true for AI-generated or imported recipes, false for recipes from their library.",
           inputSchema: removeMenuItemToolSchema,
+          inputExamples: [
+            { input: { index: 0, isNewRecipe: false } },
+            { input: { index: 1, isNewRecipe: true } },
+          ] as const,
           execute: async (data) => {
             const menuPlan: MenuPlanData = currentData.menuPlan
               ? { ...currentData.menuPlan, existingRecipes: [...(currentData.menuPlan.existingRecipes || [])], newRecipes: [...(currentData.menuPlan.newRecipes || [])] }
@@ -392,6 +478,9 @@ Make the recipe practical and achievable for a home cook.`,
                 return { success: false, error: "Invalid index" };
               }
               const removed = menuPlan.newRecipes.splice(data.index, 1)[0];
+
+              // Update currentData in place so subsequent tool calls see the change
+              currentData.menuPlan = menuPlan;
 
               // Persist to session
               await updateSessionState(db, userId, sessionId, { menuPlan });
@@ -408,6 +497,9 @@ Make the recipe practical and achievable for a home cook.`,
               }
               const removed = menuPlan.existingRecipes.splice(data.index, 1)[0];
 
+              // Update currentData in place so subsequent tool calls see the change
+              currentData.menuPlan = menuPlan;
+
               // Persist to session
               await updateSessionState(db, userId, sessionId, { menuPlan });
 
@@ -422,11 +514,15 @@ Make the recipe practical and achievable for a home cook.`,
         }),
         confirmMenu: tool({
           description:
-            "Confirm the menu and request user approval to move to the timeline step. Can be called with an empty menu.",
+            "Finalize the menu and show confirmation to the user. Call this when the user is satisfied with their menu or wants to proceed. Can be called with an empty menu - recipes can be added later.",
           inputSchema: z.object({
-            dietaryRestrictions: z.array(z.string()).optional(),
-            ambitionLevel: z.enum(["simple", "moderate", "ambitious"]).optional(),
+            dietaryRestrictions: z.array(z.string()).optional().describe("Any dietary restrictions mentioned (e.g., 'vegetarian', 'gluten-free')"),
+            ambitionLevel: z.enum(["simple", "moderate", "ambitious"]).optional().describe("How complex the cooking will be"),
           }),
+          inputExamples: [
+            { input: {} },
+            { input: { dietaryRestrictions: ["vegetarian"], ambitionLevel: "moderate" } },
+          ] as const,
           execute: async (data) => {
             const menuPlan: MenuPlanData = currentData.menuPlan
               ? { ...currentData.menuPlan }
@@ -475,8 +571,11 @@ Make the recipe practical and achievable for a home cook.`,
       return {
         generateTimeline: tool({
           description:
-            "Generate a cooking timeline based on the menu and party date. Works backwards from the party time.",
+            "Create a cooking timeline/schedule for the party. Call this to generate a detailed prep schedule based on the menu items and party date. Works backwards from party time to include shopping, prep, and cooking tasks.",
           inputSchema: z.object({}),
+          inputExamples: [
+            { input: {} },
+          ] as const,
           execute: async () => {
             const partyInfo = currentData.partyInfo;
             const menuPlan = currentData.menuPlan;
@@ -551,6 +650,9 @@ Keep it manageable - don't overwhelm with too many tasks.`;
               phaseDescription: task.phaseDescription ?? undefined,
             }));
 
+            // Update currentData in place so subsequent tool calls see the change
+            currentData.timeline = timeline;
+
             // Persist to session
             await updateSessionState(db, userId, sessionId, { timeline });
 
@@ -564,10 +666,15 @@ Keep it manageable - don't overwhelm with too many tasks.`;
         }),
         adjustTimeline: tool({
           description:
-            "Adjust the timeline based on user feedback. Describe the changes you want to make.",
+            "Modify the cooking timeline based on user feedback. Call this when the user wants to change timing, add tasks, remove tasks, or reorganize the schedule.",
           inputSchema: z.object({
-            changes: z.string().describe("Description of the changes to make"),
+            changes: z.string().describe("What to change (e.g., 'move salad prep to 2pm', 'add 30 min buffer before guests arrive')"),
           }),
+          inputExamples: [
+            { input: { changes: "Move the salad prep earlier, around 2pm" } },
+            { input: { changes: "Add more buffer time before guests arrive" } },
+            { input: { changes: "Remove the grocery shopping task - I already have everything" } },
+          ] as const,
           execute: async (data) => {
             const currentTimeline = currentData.timeline || [];
 
@@ -610,6 +717,9 @@ Return the updated timeline with all tasks (keep unchanged tasks as-is, modify o
               phaseDescription: task.phaseDescription ?? undefined,
             }));
 
+            // Update currentData in place so subsequent tool calls see the change
+            currentData.timeline = timeline;
+
             // Persist to session
             await updateSessionState(db, userId, sessionId, { timeline });
 
@@ -623,8 +733,11 @@ Return the updated timeline with all tasks (keep unchanged tasks as-is, modify o
         }),
         confirmTimeline: tool({
           description:
-            "Confirm the timeline and request user approval to finalize the party creation. This is the final step.",
+            "Finalize the timeline and show confirmation to the user. Call this when the user is happy with the schedule. This is the final step before creating the party.",
           inputSchema: z.object({}),
+          inputExamples: [
+            { input: {} },
+          ] as const,
           execute: async () => {
             const timeline = currentData.timeline || [];
             const taskCount = timeline.length;

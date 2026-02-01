@@ -1,6 +1,7 @@
-import React, { useRef, useEffect, FormEvent } from "react";
+import React, { useRef, useEffect, useState, FormEvent } from "react";
 import { createRoot } from "react-dom/client";
-import { useChat } from "ai/react";
+import { useChat } from "@ai-sdk/react";
+import { DefaultChatTransport } from "ai";
 
 interface ToolResult {
   success: boolean;
@@ -9,10 +10,16 @@ interface ToolResult {
 }
 
 function RecipeChat() {
-  const { messages, input, handleInputChange, handleSubmit, isLoading } = useChat({
-    api: "/api/recipes/generate",
+  const [input, setInput] = useState("");
+  const { messages, status, sendMessage } = useChat({
+    id: `recipe-chat-${crypto.randomUUID()}`,
+    transport: new DefaultChatTransport({
+      api: "/api/recipes/generate",
+    }),
   });
   const messagesEndRef = useRef<HTMLDivElement>(null);
+
+  const isLoading = status === "submitted" || status === "streaming";
 
   // Auto-scroll to bottom when new messages arrive
   useEffect(() => {
@@ -21,7 +28,10 @@ function RecipeChat() {
 
   const handleFormSubmit = (e: FormEvent) => {
     e.preventDefault();
-    handleSubmit(e);
+    if (input.trim()) {
+      sendMessage({ text: input });
+      setInput("");
+    }
   };
 
   return (
@@ -57,36 +67,46 @@ function RecipeChat() {
                   : "bg-muted"
               }`}
             >
-              <div className="whitespace-pre-wrap">{msg.content}</div>
+              <div className="whitespace-pre-wrap">
+                {msg.parts
+                  .filter((p): p is { type: "text"; text: string } => p.type === "text")
+                  .map((p) => p.text)
+                  .join("")}
+              </div>
 
-              {/* Tool Results */}
-              {msg.toolInvocations?.map((toolInvocation) => {
-                if (toolInvocation.state === "result") {
-                  const result = toolInvocation.result as ToolResult;
-                  if (result.success) {
-                    return (
-                      <div
-                        key={toolInvocation.toolCallId}
-                        className="mt-3 p-3 bg-green-100 dark:bg-green-900/30 rounded-md"
-                      >
-                        <p className="text-sm font-medium text-green-800 dark:text-green-200 mb-2">
-                          Recipe saved!
-                        </p>
-                        <a
-                          href={`/recipes/${result.recipeId}`}
-                          className="inline-flex items-center gap-2 text-sm font-medium text-primary hover:underline"
+              {/* Tool Results - v6 format uses parts array */}
+              {msg.parts
+                .filter((p): p is { type: "tool-invocation"; toolInvocation: { state: string; toolCallId: string; result?: unknown } } =>
+                  p.type === "tool-invocation"
+                )
+                .map((part) => {
+                  const inv = part.toolInvocation;
+                  if (inv.state === "result") {
+                    const result = inv.result as ToolResult;
+                    if (result.success) {
+                      return (
+                        <div
+                          key={inv.toolCallId}
+                          className="mt-3 p-3 bg-green-100 dark:bg-green-900/30 rounded-md"
                         >
-                          View "{result.title}"
-                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M14 5l7 7m0 0l-7 7m7-7H3" />
-                          </svg>
-                        </a>
-                      </div>
-                    );
+                          <p className="text-sm font-medium text-green-800 dark:text-green-200 mb-2">
+                            Recipe saved!
+                          </p>
+                          <a
+                            href={`/recipes/${result.recipeId}`}
+                            className="inline-flex items-center gap-2 text-sm font-medium text-primary hover:underline"
+                          >
+                            View "{result.title}"
+                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M14 5l7 7m0 0l-7 7m7-7H3" />
+                            </svg>
+                          </a>
+                        </div>
+                      );
+                    }
                   }
-                }
-                return null;
-              })}
+                  return null;
+                })}
             </div>
           </div>
         ))}
@@ -110,7 +130,7 @@ function RecipeChat() {
       <form onSubmit={handleFormSubmit} className="border-t p-4 flex gap-2">
         <input
           value={input}
-          onChange={handleInputChange}
+          onChange={(e) => setInput(e.target.value)}
           placeholder="Describe the recipe you want to create..."
           className="flex-1 px-4 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-primary"
           disabled={isLoading}

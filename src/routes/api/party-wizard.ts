@@ -346,6 +346,11 @@ const partyWizardRoutes = new Hono<AppContext>()
     ];
 
     console.log("[wizard/chat] Step:", step, "Messages count:", allMessages.length);
+    console.log("[wizard/chat] Existing messages from DB:", JSON.stringify(existingMessages.map(m => ({
+      role: m.message.role,
+      parts: m.message.parts,
+      content: m.message.content,
+    })), null, 2));
 
     // Dynamically import AI dependencies
     const {
@@ -355,9 +360,22 @@ const partyWizardRoutes = new Hono<AppContext>()
       hasToolCall,
       createUIMessageStream,
       createUIMessageStreamResponse,
+      wrapLanguageModel,
+      addToolInputExamplesMiddleware,
     } = await import("ai");
     const { createAI } = await import("../../lib/ai");
-    const { defaultModel, visionModel } = createAI(c.env.GOOGLE_GENERATIVE_AI_API_KEY);
+    const { defaultModel: rawDefaultModel, visionModel: rawVisionModel } = createAI(c.env.GOOGLE_GENERATIVE_AI_API_KEY);
+
+    // Wrap models with middleware to add inputExamples to tool descriptions
+    // This is needed because Gemini doesn't natively support inputExamples
+    const defaultModel = wrapLanguageModel({
+      model: rawDefaultModel,
+      middleware: addToolInputExamplesMiddleware(),
+    });
+    const visionModel = wrapLanguageModel({
+      model: rawVisionModel,
+      middleware: addToolInputExamplesMiddleware(),
+    });
 
     // Use confirmation decision from body (cohort-002-project pattern)
     // The decision was already added as a data part to the message above
@@ -474,16 +492,27 @@ const partyWizardRoutes = new Hono<AppContext>()
           // If this is a revision request, add context to the system prompt
           // This ensures the AI understands it needs to incorporate the feedback and call the confirmation tool again
           if (isRevisionRequest && revisionFeedback && pendingConfirmationRequest) {
+            // Step-specific instructions for what tools to call
+            const stepToolInstructions = {
+              "party-info": `Call confirmPartyInfo with the corrected information.`,
+              "guests": `If adding guests: call addGuest for each new guest, then call confirmGuestList.
+If removing guests: call removeGuest for each guest to remove, then call confirmGuestList.
+If just confirming: call confirmGuestList.`,
+              "menu": `If adding recipes: call addExistingRecipe, generateRecipeIdea, or extractRecipeFromUrl as needed, then call confirmMenu.
+If removing items: call removeMenuItem, then call confirmMenu.
+If just confirming: call confirmMenu.`,
+              "timeline": `If adjusting the schedule: call adjustTimeline, then call confirmTimeline.
+If just confirming: call confirmTimeline.`,
+            }[step] || `Call ${confirmationToolName}.`;
+
             const revisionContext = `
 
 IMPORTANT - REVISION IN PROGRESS:
-The user was shown a confirmation dialog and clicked "Make Changes" with this feedback:
+The user clicked "Make Changes" on the confirmation dialog with this feedback:
 "${revisionFeedback}"
 
-Your task:
-1. Incorporate the user's requested changes
-2. Call the ${confirmationToolName} tool again IMMEDIATELY with the updated information
-3. Do NOT ask for confirmation verbally - just call the tool
+YOU MUST CALL TOOLS - do not just respond with text!
+${stepToolInstructions}
 
 Previous confirmation summary: "${pendingConfirmationRequest.data.request.summary}"`;
 
@@ -493,9 +522,28 @@ Previous confirmation summary: "${pendingConfirmationRequest.data.request.summar
           // Convert messages to model format
           // For step transitions after approval, start fresh
           // For revisions, include the message history so AI has context
-          const messagesToConvert = bodyDecision?.decision.type === "approve" && pendingConfirmationRequest
+          let messagesToConvert = bodyDecision?.decision.type === "approve" && pendingConfirmationRequest
             ? [] // Start fresh for new step
             : allMessages;
+
+          // Filter out messages that would cause Gemini API errors:
+          // 1. Messages with empty parts arrays
+          // 2. Messages with only data-* parts (these are UI-only, not for the model)
+          messagesToConvert = messagesToConvert.filter((msg) => {
+            const parts = msg.parts as Array<{ type?: string }> | undefined;
+            if (!parts || parts.length === 0) {
+              console.log("[wizard/chat] Filtering out message with empty parts:", msg.role);
+              return false;
+            }
+            // Check if message has at least one non-data part
+            const hasModelContent = parts.some((p) => !p.type?.startsWith("data-"));
+            if (!hasModelContent) {
+              console.log("[wizard/chat] Filtering out message with only data parts:", msg.role);
+              return false;
+            }
+            return true;
+          });
+
           const modelMessages = await convertToModelMessages(messagesToConvert as WizardMessage[]);
 
           console.log("[wizard/chat] Model messages count:", modelMessages.length);
@@ -505,8 +553,11 @@ Previous confirmation summary: "${pendingConfirmationRequest.data.request.summar
             system: currentSystemPrompt,
             messages: modelMessages,
             tools,
-            // For revision requests, force the AI to call the confirmation tool
-            toolChoice: isRevisionRequest && confirmationToolName
+            // For revision requests, only force tool choice on party-info step
+            // because confirmPartyInfo accepts all data as parameters.
+            // Other steps (guests, menu, timeline) need multiple tool calls
+            // (e.g., removeGuest -> addGuest -> confirmGuestList)
+            toolChoice: isRevisionRequest && confirmationToolName && step === "party-info"
               ? { type: "tool", toolName: confirmationToolName }
               : undefined,
             // Stop when confirmation tool is called (wait for user approval)
@@ -524,14 +575,23 @@ Previous confirmation summary: "${pendingConfirmationRequest.data.request.summar
         generateId: () => crypto.randomUUID(),
         onFinish: async ({ responseMessage }) => {
           console.log("[wizard/chat] onFinish called");
+          console.log("[wizard/chat] Response parts count:", responseMessage.parts.length);
+          console.log("[wizard/chat] Response part types:", responseMessage.parts.map(p => p.type));
 
-          // Save assistant response message to DB
           // Convert to serializable format
           const responseParts: Array<Record<string, unknown>> = responseMessage.parts.map((part) => {
             // Spread the part to convert to plain object
             return { ...part };
           });
 
+          // Only save if the message has meaningful content
+          // Skip saving empty messages (which can happen on errors)
+          if (responseParts.length === 0) {
+            console.log("[wizard/chat] Skipping save - empty response parts");
+            return;
+          }
+
+          // Save assistant response message to DB
           const assistantMessage: SerializedUIMessage = {
             id: responseMessage.id,
             role: "assistant",

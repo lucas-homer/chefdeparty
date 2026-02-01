@@ -147,51 +147,57 @@ export type WizardCompleteRequest = z.infer<typeof wizardCompleteRequestSchema>;
 // Tool Result Schemas (for AI tool calls)
 // ============================================
 
-// Party Info Tool
-export const confirmPartyInfoToolSchema = partyInfoDataSchema;
+// Party Info Tool - uses string for dateTime since the model generates ISO strings
+export const confirmPartyInfoToolSchema = z.object({
+  name: z.string().min(1).describe("Name of the party or event (e.g., 'Sarah's Birthday', 'Summer BBQ')"),
+  dateTime: z.string().describe("Date and time in ISO 8601 format. IMPORTANT: Convert natural language like 'next Saturday at 7pm' to ISO format like '2026-02-06T19:00:00'. Always include the full date and time."),
+  location: z.string().optional().describe("Where the party will be held (e.g., '123 Main St' or 'My place')"),
+  description: z.string().optional().describe("Optional description or details for the invitation"),
+  allowContributions: z.boolean().default(false).describe("Whether guests can sign up to bring dishes or drinks"),
+});
 
 // Guest Tools
 export const addGuestToolSchema = z.object({
-  name: z.string().optional(),
-  email: z.string().email().optional(),
-  phone: z.string().optional(),
+  name: z.string().optional().describe("Guest's display name (e.g., 'Sarah Johnson', 'Mom')"),
+  email: z.string().email().optional().describe("Guest's email address for sending the invitation"),
+  phone: z.string().optional().describe("Guest's phone number - use this if no email is provided"),
 }).refine(
   (data) => data.email || data.phone,
   { message: "Either email or phone is required" }
 );
 
 export const removeGuestToolSchema = z.object({
-  index: z.number().int().min(0),
+  index: z.number().int().min(0).describe("Zero-based index of the guest to remove from the list"),
 });
 
 // Menu Tools
 export const addExistingRecipeToolSchema = z.object({
-  recipeId: z.string().uuid(),
-  course: courseSchema.optional(),
-  scaledServings: z.number().int().positive().optional(),
+  recipeId: z.string().uuid().describe("The ID of a recipe from the user's library"),
+  course: courseSchema.optional().describe("Which course this dish is for (appetizer, main, etc.)"),
+  scaledServings: z.number().int().positive().optional().describe("Number of servings to scale the recipe to"),
 });
 
 export const generateRecipeIdeaToolSchema = z.object({
-  description: z.string().describe("Description of the dish to generate"),
-  course: courseSchema.optional().describe("Course type for the dish"),
+  description: z.string().describe("Description of the dish to generate (e.g., 'a light summer salad with citrus')"),
+  course: courseSchema.optional().describe("Which course this dish is for (appetizer, main, side, dessert, drink)"),
 });
 
 export const extractRecipeFromUrlToolSchema = z.object({
-  url: z.string().url(),
-  course: courseSchema.optional(),
+  url: z.string().url().describe("Full URL of the recipe page to import"),
+  course: courseSchema.optional().describe("Which course this dish is for"),
 });
 
 export const proposeMenuToolSchema = z.object({
-  constraints: z.string().describe("Dietary restrictions, theme, or other constraints"),
-  ambitionLevel: z.enum(["simple", "moderate", "ambitious"]).optional(),
+  constraints: z.string().describe("Dietary restrictions, cuisine preferences, or theme (e.g., 'vegetarian Italian')"),
+  ambitionLevel: z.enum(["simple", "moderate", "ambitious"]).optional().describe("How complex the menu should be"),
 });
 
 export const removeMenuItemToolSchema = z.object({
-  index: z.number().int().min(0),
-  isNewRecipe: z.boolean().describe("Whether this is from newRecipes array or existingRecipes array"),
+  index: z.number().int().min(0).describe("Zero-based index of the item to remove"),
+  isNewRecipe: z.boolean().describe("True if removing from newly created recipes, false if from existing library recipes"),
 });
 
 // Timeline Tools
 export const adjustTimelineToolSchema = z.object({
-  changes: z.string().describe("Description of the changes to make to the timeline"),
+  changes: z.string().describe("Description of what to change (e.g., 'move the salad prep to 2pm', 'add more buffer time')"),
 });

@@ -395,11 +395,21 @@ function PartyWizardChatInner({
   // Render a message part
   function renderMessagePart(msg: UIMessage, part: UIMessage["parts"][0], index: number) {
     if (part.type === "text") {
+      const text = (part as { text: string }).text;
+      // Skip empty or whitespace-only text
+      if (!text || !text.trim()) {
+        return null;
+      }
       return (
         <div key={index} className="whitespace-pre-wrap">
-          {(part as { text: string }).text}
+          {text}
         </div>
       );
+    }
+
+    // Skip internal step markers
+    if (part.type === "step-start") {
+      return null;
     }
 
     if (part.type === "data-step-confirmation-request") {
@@ -413,13 +423,47 @@ function PartyWizardChatInner({
       const hasDecision = decidedRequestIds.has(request.id);
 
       if (hasDecision) {
-        return null; // Don't show if already decided
+        // Show a collapsed version instead of nothing
+        return (
+          <div key={index} className="text-sm text-muted-foreground italic">
+            {request.summary}
+          </div>
+        );
       }
+
+      // Render detailed content for guests step
+      const renderConfirmationContent = () => {
+        if (request.step === "guests") {
+          const guestList = (request.data as { guestList?: Array<{ name?: string; email?: string; phone?: string }> }).guestList || [];
+          if (guestList.length === 0) {
+            return <p className="text-sm text-muted-foreground mb-4">No guests added yet (you can add them later)</p>;
+          }
+          return (
+            <div className="mb-4">
+              <p className="text-sm text-muted-foreground mb-2">{guestList.length} guest{guestList.length === 1 ? "" : "s"}:</p>
+              <ul className="space-y-1.5 text-sm">
+                {guestList.map((guest, i) => (
+                  <li key={i} className="flex items-center gap-2">
+                    <span className="font-medium">{guest.name || "Guest"}</span>
+                    <span className="text-muted-foreground">
+                      {guest.email && guest.phone
+                        ? `(${guest.email}, ${guest.phone})`
+                        : `(${guest.email || guest.phone})`}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          );
+        }
+        // Default: show summary
+        return <p className="text-sm text-muted-foreground mb-4">{request.summary}</p>;
+      };
 
       return (
         <div key={index} className="mt-3 p-4 bg-card border rounded-lg">
           <h3 className="font-medium mb-2">Please confirm:</h3>
-          <p className="text-sm text-muted-foreground mb-4">{request.summary}</p>
+          {renderConfirmationContent()}
           <div className="flex gap-2">
             <button
               type="button"
@@ -515,20 +559,31 @@ function PartyWizardChatInner({
         {renderCurrentData()}
 
         {/* Chat messages */}
-        {messages.map((msg) => (
-          <div
-            key={msg.id}
-            className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}
-          >
+        {messages.map((msg) => {
+          // Pre-render parts to check if any have content
+          const renderedParts = msg.parts.map((part, i) => renderMessagePart(msg, part, i));
+          const hasVisibleContent = renderedParts.some((p) => p !== null);
+
+          // Skip rendering the message bubble if no parts have content
+          if (!hasVisibleContent) {
+            return null;
+          }
+
+          return (
             <div
-              className={`max-w-[80%] p-3 rounded-lg ${
-                msg.role === "user" ? "bg-primary text-primary-foreground" : "bg-muted"
-              }`}
+              key={msg.id}
+              className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}
             >
-              {msg.parts.map((part, i) => renderMessagePart(msg, part, i))}
+              <div
+                className={`max-w-[80%] p-3 rounded-lg ${
+                  msg.role === "user" ? "bg-primary text-primary-foreground" : "bg-muted"
+                }`}
+              >
+                {renderedParts}
+              </div>
             </div>
-          </div>
-        ))}
+          );
+        })}
 
         {/* Loading indicator */}
         {isLoading && (
