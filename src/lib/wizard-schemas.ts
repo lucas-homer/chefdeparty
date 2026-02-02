@@ -56,6 +56,7 @@ export const newRecipeDataSchema = z.object({
   description: z.string().optional(),
   sourceUrl: z.string().url().optional(),
   sourceType: z.enum(["url", "photo", "ai", "manual"]).optional(),
+  imageHash: z.string().optional(), // Hash of source image for deduplication tracking
   ingredients: z.array(ingredientSchema),
   instructions: z.array(instructionSchema),
   prepTimeMinutes: z.number().int().positive().optional().nullable(),
@@ -73,6 +74,8 @@ export const menuPlanDataSchema = z.object({
   newRecipes: z.array(newRecipeDataSchema), // Recipes to be created
   dietaryRestrictions: z.array(z.string()).optional(),
   ambitionLevel: z.enum(["simple", "moderate", "ambitious"]).optional(),
+  processedUrls: z.array(z.string()).optional(), // Track URLs already extracted to prevent duplicates
+  processedImageHashes: z.array(z.string()).optional(), // Track image hashes already processed
 });
 
 export type MenuPlanData = z.infer<typeof menuPlanDataSchema>;

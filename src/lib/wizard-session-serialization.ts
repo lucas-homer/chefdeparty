@@ -69,6 +69,8 @@ export function serializeMenuPlan(plan: MenuPlanData): SerializedMenuPlan {
     })),
     dietaryRestrictions: plan.dietaryRestrictions,
     ambitionLevel: plan.ambitionLevel,
+    processedUrls: plan.processedUrls,
+    processedImageHashes: plan.processedImageHashes,
   };
 }
 
@@ -134,6 +136,8 @@ export function deserializeMenuPlan(plan: SerializedMenuPlan | null): MenuPlanDa
     })),
     dietaryRestrictions: plan.dietaryRestrictions,
     ambitionLevel: plan.ambitionLevel as MenuPlanData["ambitionLevel"],
+    processedUrls: plan.processedUrls,
+    processedImageHashes: plan.processedImageHashes,
   };
 }
 
@@ -159,6 +163,7 @@ export interface DeserializedWizardSession {
   id: string;
   userId: string;
   currentStep: "party-info" | "guests" | "menu" | "timeline";
+  furthestStepIndex: number; // 0 = party-info, 1 = guests, 2 = menu, 3 = timeline
   partyInfo: PartyInfoData | null;
   guestList: GuestData[];
   menuPlan: MenuPlanData | null;
@@ -174,6 +179,7 @@ export function deserializeWizardSession(row: WizardSession): DeserializedWizard
     id: row.id,
     userId: row.userId,
     currentStep: row.currentStep as DeserializedWizardSession["currentStep"],
+    furthestStepIndex: row.furthestStepIndex ?? 0,
     partyInfo: deserializePartyInfo(row.partyInfo),
     guestList: deserializeGuestList(row.guestList),
     menuPlan: deserializeMenuPlan(row.menuPlan),

@@ -19,6 +19,7 @@ import {
   wizardCompleteRequestSchema,
   wizardStepSchema,
   type WizardStep,
+  type MenuPlanData,
 } from "../../lib/wizard-schemas";
 import { aiRecipeExtractionSchema } from "../../lib/schemas";
 import { getWizardTools } from "../../lib/party-wizard-tools";
@@ -69,6 +70,34 @@ const sessionChatRequestSchema = z.object({
 const stepChangeSchema = z.object({
   step: wizardStepSchema,
 });
+
+// Strip large binary data (images) from message parts before storing in DB
+// D1/SQLite has a ~1MB limit for TEXT columns, and base64 images exceed this
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function stripLargeDataForStorage(parts: any[]): any[] {
+  return parts.map((part) => {
+    // Replace image data with a placeholder
+    if (part.type === "image" && part.image) {
+      return {
+        type: "image",
+        imageStripped: true, // Marker that image was stripped
+        mimeType: typeof part.image === "string" && part.image.startsWith("data:")
+          ? part.image.split(";")[0].replace("data:", "")
+          : "image/unknown",
+      };
+    }
+    // Handle file parts similarly
+    if (part.type === "file" && part.data) {
+      return {
+        type: "file",
+        fileStripped: true,
+        mimeType: part.mimeType || "application/octet-stream",
+        name: part.name,
+      };
+    }
+    return part;
+  });
+}
 
 const partyWizardRoutes = new Hono<AppContext>()
   .use("*", requireAuth)
@@ -324,25 +353,40 @@ const partyWizardRoutes = new Hono<AppContext>()
       ];
     }
 
-    const userMessage: SerializedUIMessage = {
+    // Keep original parts (with image data) for AI processing
+    const partsForAI = parts.length > 0 ? parts : [{ type: "text", text: textContent }];
+
+    // Strip large data (images) for database storage
+    const partsForStorage = stripLargeDataForStorage(partsForAI);
+
+    const userMessageForStorage: SerializedUIMessage = {
       id: userMessageId,
       role: "user",
       content: textContent,
-      parts: parts.length > 0 ? parts : [{ type: "text", text: textContent }],
+      parts: partsForStorage,
       createdAt: incomingMessage.createdAt || new Date().toISOString(),
     };
 
-    // Save user message to DB
+    // Save user message to DB (with stripped image data)
     await db.insert(wizardMessages).values({
       sessionId,
       step,
-      message: userMessage,
+      message: userMessageForStorage,
     });
 
-    // Reconstruct full message history: existing + new user message
+    // Full message (with image data) for AI processing in this request
+    const userMessageForAI: SerializedUIMessage = {
+      id: userMessageId,
+      role: "user",
+      content: textContent,
+      parts: partsForAI,
+      createdAt: incomingMessage.createdAt || new Date().toISOString(),
+    };
+
+    // Reconstruct full message history: existing + new user message (with full image data)
     const allMessages = [
       ...existingMessages.map((m) => m.message),
-      userMessage,
+      userMessageForAI,
     ];
 
     console.log("[wizard/chat] Step:", step, "Messages count:", allMessages.length);
@@ -437,10 +481,33 @@ const partyWizardRoutes = new Hono<AppContext>()
             if (decision.type === "approve") {
               // Update step in DB
               const nextStep = request.nextStep as WizardStep | "complete";
+
+              // Calculate the index of the next step for furthestStepIndex tracking
+              const stepIndices: Record<WizardStep | "complete", number> = {
+                "party-info": 0,
+                "guests": 1,
+                "menu": 2,
+                "timeline": 3,
+                "complete": 3, // timeline is the last step
+              };
+              const nextStepIndex = stepIndices[nextStep];
+
+              // Fetch current furthestStepIndex to only increase it (never decrease)
+              const currentSession = await db.query.wizardSessions.findFirst({
+                where: eq(wizardSessions.id, sessionId),
+                columns: { furthestStepIndex: true },
+              });
+              const currentFurthestIndex = currentSession?.furthestStepIndex ?? 0;
+              const newFurthestIndex = Math.max(currentFurthestIndex, nextStepIndex);
+
               if (nextStep !== "complete") {
                 await db
                   .update(wizardSessions)
-                  .set({ currentStep: nextStep, updatedAt: new Date() })
+                  .set({
+                    currentStep: nextStep,
+                    furthestStepIndex: newFurthestIndex,
+                    updatedAt: new Date(),
+                  })
                   .where(
                     and(
                       eq(wizardSessions.id, sessionId),
@@ -448,6 +515,20 @@ const partyWizardRoutes = new Hono<AppContext>()
                     )
                   );
                 step = nextStep;
+              } else {
+                // For "complete", still update furthestStepIndex
+                await db
+                  .update(wizardSessions)
+                  .set({
+                    furthestStepIndex: newFurthestIndex,
+                    updatedAt: new Date(),
+                  })
+                  .where(
+                    and(
+                      eq(wizardSessions.id, sessionId),
+                      eq(wizardSessions.userId, user.id)
+                    )
+                  );
               }
 
               // Emit step-confirmed data part
@@ -466,6 +547,365 @@ const partyWizardRoutes = new Hono<AppContext>()
               return;
             }
             // If rejected, the feedback is in the text content - continue to AI to process it
+          }
+
+          // ========================================
+          // WORKFLOW: Direct image-to-recipe extraction
+          // When user uploads an image on the menu step, skip LLM tool decision
+          // and directly extract the recipe using vision model
+          // ========================================
+          if (step === "menu" && hasImage) {
+            console.log("[wizard/chat] Image detected on menu step - using direct extraction workflow");
+
+            // Find the image part(s) from the user message
+            const imageParts = partsForAI.filter(
+              (p: { type: string }) => p.type === "image"
+            ) as Array<{ type: "image"; image: string }>;
+
+            if (imageParts.length > 0) {
+              // Helper to hash image data using Web Crypto API
+              async function hashImageData(base64Data: string): Promise<string> {
+                const data = new TextEncoder().encode(base64Data);
+                const hashBuffer = await crypto.subtle.digest("SHA-256", data);
+                const hashArray = Array.from(new Uint8Array(hashBuffer));
+                return hashArray.map(b => b.toString(16).padStart(2, "0")).join("");
+              }
+
+              // Compute hash of the first image
+              const imageData = imageParts[0].image;
+              const imageHash = await hashImageData(imageData);
+
+              // Check if image has already been processed
+              const processedHashes = currentData.menuPlan?.processedImageHashes || [];
+              if (processedHashes.includes(imageHash)) {
+                console.log("[wizard/chat] Image already processed, skipping");
+
+                // Emit a message telling the user this image was already added
+                const responseText = "This image has already been added to the menu.";
+                writer.write({
+                  type: "text-delta",
+                  textDelta: responseText,
+                });
+
+                // Save assistant response to DB
+                const assistantMessage: SerializedUIMessage = {
+                  id: crypto.randomUUID(),
+                  role: "assistant",
+                  content: responseText,
+                  parts: [{ type: "text", text: responseText }],
+                  createdAt: new Date().toISOString(),
+                };
+
+                await db.insert(wizardMessages).values({
+                  sessionId,
+                  step,
+                  message: assistantMessage,
+                });
+
+                return; // Skip extraction - already processed
+              }
+
+              const { generateObject } = await import("ai");
+
+              try {
+                // Use vision model to extract recipe from image
+                const { object: recipe } = await generateObject({
+                  model: rawVisionModel, // Use raw model (no middleware needed for generateObject)
+                  schema: aiRecipeExtractionSchema,
+                  messages: [
+                    {
+                      role: "user",
+                      content: [
+                        ...imageParts.map((img) => ({
+                          type: "image" as const,
+                          image: img.image,
+                        })),
+                        {
+                          type: "text" as const,
+                          text: `Extract the recipe from this image. Parse all ingredients with their amounts, units, and names. Include step-by-step instructions.
+
+If the image shows a handwritten or printed recipe card, transcribe it accurately.
+If it shows a dish/food, infer a reasonable recipe for it.
+If the recipe name isn't clear, give it an appropriate name based on the dish.`,
+                        },
+                      ],
+                    },
+                  ],
+                });
+
+                console.log("[wizard/chat] Recipe extracted from image:", recipe.name);
+
+                // Add to menu plan (same logic as generateRecipeIdea tool)
+                const menuPlan: MenuPlanData = currentData.menuPlan
+                  ? {
+                      ...currentData.menuPlan,
+                      existingRecipes: [...(currentData.menuPlan.existingRecipes || [])],
+                      newRecipes: [...(currentData.menuPlan.newRecipes || [])],
+                    }
+                  : { existingRecipes: [], newRecipes: [] };
+
+                menuPlan.newRecipes = [
+                  ...menuPlan.newRecipes,
+                  {
+                    ...recipe,
+                    sourceType: "photo" as const,
+                    imageHash, // Store hash with recipe for removal tracking
+                  },
+                ];
+
+                // Track this image hash as processed to prevent duplicates
+                menuPlan.processedImageHashes = [...(menuPlan.processedImageHashes || []), imageHash];
+
+                // Update currentData
+                currentData.menuPlan = menuPlan;
+
+                // Persist to session
+                await db
+                  .update(wizardSessions)
+                  .set({
+                    menuPlan: serializeMenuPlan(menuPlan),
+                    updatedAt: new Date(),
+                  })
+                  .where(
+                    and(
+                      eq(wizardSessions.id, sessionId),
+                      eq(wizardSessions.userId, user.id)
+                    )
+                  );
+
+                // Build response message
+                const responseText = `I extracted "${recipe.name}" from your image and added it to the menu! ${recipe.ingredients.length} ingredients and ${recipe.instructions.length} steps.
+
+What else would you like to add, or are you ready to finalize the menu?`;
+
+                // Emit recipe-extracted data part with full recipe for client rendering
+                writer.write({
+                  type: "data-recipe-extracted",
+                  data: {
+                    recipe: {
+                      ...recipe,
+                      sourceType: "photo" as const,
+                    },
+                    message: responseText,
+                  },
+                });
+
+                // Save assistant response to DB with the recipe data part
+                const assistantMessage: SerializedUIMessage = {
+                  id: crypto.randomUUID(),
+                  role: "assistant",
+                  content: responseText,
+                  parts: [
+                    {
+                      type: "data-recipe-extracted",
+                      data: {
+                        recipe: {
+                          name: recipe.name,
+                          description: recipe.description,
+                          ingredients: recipe.ingredients,
+                          instructions: recipe.instructions,
+                          prepTimeMinutes: recipe.prepTimeMinutes,
+                          cookTimeMinutes: recipe.cookTimeMinutes,
+                          servings: recipe.servings,
+                          tags: recipe.tags,
+                          sourceType: "photo",
+                        },
+                        message: responseText,
+                      },
+                    },
+                  ],
+                  createdAt: new Date().toISOString(),
+                };
+
+                await db.insert(wizardMessages).values({
+                  sessionId,
+                  step,
+                  message: assistantMessage,
+                });
+
+                return; // Skip streamText - we handled this deterministically
+              } catch (error) {
+                console.error("[wizard/chat] Image extraction failed:", error);
+                // Fall through to normal LLM flow, which will explain it can't process the image
+                // (This gracefully handles cases where the image isn't a recipe)
+              }
+            }
+          }
+
+          // ========================================
+          // WORKFLOW: Direct URL-to-recipe extraction
+          // When user pastes a URL on the menu step, skip LLM tool decision
+          // and directly extract the recipe
+          // ========================================
+          if (step === "menu" && !hasImage) {
+            // Check for URLs in the text content
+            const urlRegex = /https?:\/\/[^\s<>"{}|\\^`\[\]]+/gi;
+            const urls = textContent.match(urlRegex);
+
+            if (urls && urls.length > 0) {
+              const url = urls[0]; // Use the first URL found
+              console.log("[wizard/chat] URL detected on menu step - using direct extraction workflow:", url);
+
+              // Check if URL has already been processed
+              const processedUrls = currentData.menuPlan?.processedUrls || [];
+              if (processedUrls.includes(url)) {
+                console.log("[wizard/chat] URL already processed, skipping:", url);
+
+                // Emit a message telling the user this URL was already added
+                const responseText = "This recipe URL has already been added to the menu.";
+                writer.write({
+                  type: "text-delta",
+                  textDelta: responseText,
+                });
+
+                // Save assistant response to DB
+                const assistantMessage: SerializedUIMessage = {
+                  id: crypto.randomUUID(),
+                  role: "assistant",
+                  content: responseText,
+                  parts: [{ type: "text", text: responseText }],
+                  createdAt: new Date().toISOString(),
+                };
+
+                await db.insert(wizardMessages).values({
+                  sessionId,
+                  step,
+                  message: assistantMessage,
+                });
+
+                return; // Skip extraction - already processed
+              }
+
+              try {
+                const { generateObject } = await import("ai");
+
+                // Fetch via Tavily (same as the tool)
+                const tavilyRes = await fetch("https://api.tavily.com/extract", {
+                  method: "POST",
+                  headers: {
+                    "Content-Type": "application/json",
+                    Authorization: `Bearer ${c.env.TAVILY_API_KEY}`,
+                  },
+                  body: JSON.stringify({ urls: [url] }),
+                });
+
+                if (!tavilyRes.ok) {
+                  throw new Error("Failed to fetch URL content");
+                }
+
+                const tavilyData = (await tavilyRes.json()) as {
+                  results: Array<{ raw_content?: string; content?: string }>;
+                };
+                const content =
+                  tavilyData.results[0]?.raw_content || tavilyData.results[0]?.content;
+
+                if (!content) {
+                  throw new Error("Could not extract content from URL");
+                }
+
+                // Extract with AI
+                const { object: recipe } = await generateObject({
+                  model: rawDefaultModel,
+                  schema: aiRecipeExtractionSchema,
+                  prompt: `Extract the recipe from this webpage. Parse ingredients with amount/unit/name separated.\n\n${content}`,
+                });
+
+                console.log("[wizard/chat] Recipe extracted from URL:", recipe.name);
+
+                // Add to menu plan
+                const menuPlan: MenuPlanData = currentData.menuPlan
+                  ? {
+                      ...currentData.menuPlan,
+                      existingRecipes: [...(currentData.menuPlan.existingRecipes || [])],
+                      newRecipes: [...(currentData.menuPlan.newRecipes || [])],
+                    }
+                  : { existingRecipes: [], newRecipes: [] };
+
+                menuPlan.newRecipes = [
+                  ...menuPlan.newRecipes,
+                  {
+                    ...recipe,
+                    sourceUrl: url,
+                    sourceType: "url" as const,
+                  },
+                ];
+
+                // Track this URL as processed
+                menuPlan.processedUrls = [...(menuPlan.processedUrls || []), url];
+
+                // Update currentData
+                currentData.menuPlan = menuPlan;
+
+                // Persist to session
+                await db
+                  .update(wizardSessions)
+                  .set({
+                    menuPlan: serializeMenuPlan(menuPlan),
+                    updatedAt: new Date(),
+                  })
+                  .where(
+                    and(
+                      eq(wizardSessions.id, sessionId),
+                      eq(wizardSessions.userId, user.id)
+                    )
+                  );
+
+                // Build response message
+                const responseText = `I imported "${recipe.name}" from that URL and added it to the menu! ${recipe.ingredients.length} ingredients and ${recipe.instructions.length} steps.
+
+What else would you like to add, or are you ready to finalize the menu?`;
+
+                // Emit recipe-extracted data part
+                writer.write({
+                  type: "data-recipe-extracted",
+                  data: {
+                    recipe: {
+                      ...recipe,
+                      sourceType: "url" as const,
+                    },
+                    message: responseText,
+                  },
+                });
+
+                // Save assistant response to DB
+                const assistantMessage: SerializedUIMessage = {
+                  id: crypto.randomUUID(),
+                  role: "assistant",
+                  content: responseText,
+                  parts: [
+                    {
+                      type: "data-recipe-extracted",
+                      data: {
+                        recipe: {
+                          name: recipe.name,
+                          description: recipe.description,
+                          ingredients: recipe.ingredients,
+                          instructions: recipe.instructions,
+                          prepTimeMinutes: recipe.prepTimeMinutes,
+                          cookTimeMinutes: recipe.cookTimeMinutes,
+                          servings: recipe.servings,
+                          tags: recipe.tags,
+                          sourceType: "url",
+                        },
+                        message: responseText,
+                      },
+                    },
+                  ],
+                  createdAt: new Date().toISOString(),
+                };
+
+                await db.insert(wizardMessages).values({
+                  sessionId,
+                  step,
+                  message: assistantMessage,
+                });
+
+                return; // Skip streamText - we handled this deterministically
+              } catch (error) {
+                console.error("[wizard/chat] URL extraction failed:", error);
+                // Fall through to normal LLM flow
+              }
+            }
           }
 
           // Get tools with writer for HITL data parts
@@ -591,12 +1031,12 @@ Previous confirmation summary: "${pendingConfirmationRequest.data.request.summar
             return;
           }
 
-          // Save assistant response message to DB
+          // Save assistant response message to DB (strip any large data)
           const assistantMessage: SerializedUIMessage = {
             id: responseMessage.id,
             role: "assistant",
             content: "", // Content is in parts in v6
-            parts: responseParts,
+            parts: stripLargeDataForStorage(responseParts),
             createdAt: new Date().toISOString(),
           };
 
@@ -898,7 +1338,96 @@ Previous confirmation summary: "${pendingConfirmationRequest.data.request.summar
         sourceType: "photo" as const,
       },
     });
-  });
+  })
+
+  // Direct API endpoint to remove a menu item (bypasses AI for instant removal)
+  .delete(
+    "/menu-item",
+    zValidator(
+      "json",
+      z.object({
+        sessionId: z.string().uuid(),
+        index: z.number().int().min(0),
+        isNewRecipe: z.boolean(),
+      })
+    ),
+    async (c) => {
+      const user = await getUser(c);
+      if (!user?.id) return c.json({ error: "Unauthorized" }, 401);
+
+      const db = c.get("db");
+      const { sessionId, index, isNewRecipe } = c.req.valid("json");
+
+      // Fetch the session
+      const session = await db.query.wizardSessions.findFirst({
+        where: and(
+          eq(wizardSessions.id, sessionId),
+          eq(wizardSessions.userId, user.id)
+        ),
+      });
+
+      if (!session) {
+        return c.json({ error: "Session not found" }, 404);
+      }
+
+      // Deserialize the menu plan
+      const deserialized = deserializeWizardSession(session);
+      const menuPlan: MenuPlanData = deserialized.menuPlan || {
+        existingRecipes: [],
+        newRecipes: [],
+      };
+
+      let removedName: string;
+
+      if (isNewRecipe) {
+        if (index < 0 || index >= (menuPlan.newRecipes?.length || 0)) {
+          return c.json({ error: "Invalid index" }, 400);
+        }
+        const removed = menuPlan.newRecipes!.splice(index, 1)[0];
+        removedName = removed.name;
+
+        // Remove from processedUrls if this was a URL-based recipe
+        if (removed.sourceUrl && menuPlan.processedUrls) {
+          menuPlan.processedUrls = menuPlan.processedUrls.filter(
+            (url) => url !== removed.sourceUrl
+          );
+        }
+
+        // Remove from processedImageHashes if this was an image-based recipe
+        if (removed.imageHash && menuPlan.processedImageHashes) {
+          menuPlan.processedImageHashes = menuPlan.processedImageHashes.filter(
+            (hash) => hash !== removed.imageHash
+          );
+        }
+      } else {
+        if (index < 0 || index >= (menuPlan.existingRecipes?.length || 0)) {
+          return c.json({ error: "Invalid index" }, 400);
+        }
+        const removed = menuPlan.existingRecipes!.splice(index, 1)[0];
+        removedName = removed.name;
+      }
+
+      // Persist the updated menu plan
+      await db
+        .update(wizardSessions)
+        .set({
+          menuPlan: serializeMenuPlan(menuPlan),
+          updatedAt: new Date(),
+        })
+        .where(
+          and(
+            eq(wizardSessions.id, sessionId),
+            eq(wizardSessions.userId, user.id)
+          )
+        );
+
+      return c.json({
+        success: true,
+        removedName,
+        menuPlan,
+      });
+    }
+  );
 
 export type PartyWizardRoutes = typeof partyWizardRoutes;
 export { partyWizardRoutes };

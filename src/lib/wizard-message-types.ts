@@ -29,6 +29,27 @@ export type StepConfirmationDecision =
   | { type: "approve" }
   | { type: "revise"; feedback: string };
 
+// Extracted recipe data (from image or URL)
+export type ExtractedRecipeData = {
+  name: string;
+  description?: string;
+  ingredients: Array<{
+    amount?: string;
+    unit?: string;
+    ingredient: string;
+    notes?: string;
+  }>;
+  instructions: Array<{
+    step: number;
+    description: string;
+  }>;
+  prepTimeMinutes?: number;
+  cookTimeMinutes?: number;
+  servings?: number;
+  tags?: string[];
+  sourceType: "photo" | "url" | "ai";
+};
+
 // Custom data parts for wizard-specific data in messages
 export type WizardDataParts = {
   "step-confirmation-request": {
@@ -42,6 +63,10 @@ export type WizardDataParts = {
     requestId: string;
     step: WizardStep;
     nextStep: WizardStep | "complete";
+  };
+  "recipe-extracted": {
+    recipe: ExtractedRecipeData;
+    message: string;
   };
 };
 

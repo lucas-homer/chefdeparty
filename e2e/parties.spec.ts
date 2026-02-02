@@ -33,8 +33,19 @@ test.describe("Parties Page (Authenticated)", () => {
     await expect(page).toHaveURL(new RegExp(`/parties/${testParties.upcoming.id}`));
   });
 
-  test("should show create party form", async ({ page }) => {
+  test("should show wizard choice modal on new party", async ({ page }) => {
     await page.goto("/parties/new");
+
+    // Should show the wizard choice modal
+    await expect(page.getByRole("heading", { name: /create a new party/i })).toBeVisible();
+
+    // Should show both options
+    await expect(page.getByRole("button", { name: /let's chat/i })).toBeVisible();
+    await expect(page.getByRole("button", { name: /manually fill out forms/i })).toBeVisible();
+  });
+
+  test("should show manual form when using mode=manual", async ({ page }) => {
+    await page.goto("/parties/new?mode=manual");
 
     // Should show the create party form heading
     await expect(page.getByRole("heading", { name: /create new party/i })).toBeVisible();

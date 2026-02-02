@@ -9,6 +9,7 @@ export { PartyWizardChat } from "./PartyWizardChat";
 export { WizardProgress } from "./WizardProgress";
 export { WizardCreating } from "./WizardCreating";
 export { RecipePicker } from "./RecipePicker";
+export { MenuSidebar } from "./MenuSidebar";
 export { useWizardState } from "./useWizardState";
 
 // Types
@@ -41,8 +42,11 @@ function PartyWizardApp({ manualUrl = "/parties/new" }: PartyWizardAppProps) {
   }
 
   if (showChat) {
+    // Mobile: full bleed with negative margins to escape main padding, minus header height (~65px)
+    // Using 100dvh for better mobile browser support (accounts for browser UI)
+    // Desktop: contained with max-width and proper spacing
     return (
-      <div className="max-w-2xl mx-auto p-4">
+      <div className="-mx-4 -my-8 h-[calc(100dvh-65px)] md:mx-0 md:my-0 md:max-w-5xl md:mx-auto md:h-[calc(100vh-10rem)] md:py-4">
         <PartyWizardChat onComplete={handleComplete} onCancel={handleCancel} />
       </div>
     );

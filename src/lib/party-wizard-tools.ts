@@ -341,6 +341,12 @@ export function getWizardTools(step: WizardStep, context: ToolContext): ToolSet 
             { input: { url: "https://cooking.nytimes.com/recipes/1234", course: "main" } },
           ] as const,
           execute: async (data) => {
+            // Check if URL has already been processed
+            const processedUrls = currentData.menuPlan?.processedUrls || [];
+            if (processedUrls.includes(data.url)) {
+              return { success: false, error: "This recipe URL has already been added to the menu." };
+            }
+
             const { generateObject } = await import("ai");
             const { createAI } = await import("./ai");
             const { defaultModel } = createAI(env.GOOGLE_GENERATIVE_AI_API_KEY);
@@ -389,17 +395,35 @@ export function getWizardTools(step: WizardStep, context: ToolContext): ToolSet 
               },
             ];
 
+            // Track this URL as processed to prevent duplicates
+            menuPlan.processedUrls = [...(menuPlan.processedUrls || []), data.url];
+
             // Update currentData in place so subsequent tool calls see the change
             currentData.menuPlan = menuPlan;
 
             // Persist to session
             await updateSessionState(db, userId, sessionId, { menuPlan });
 
+            // Emit recipe data part for client rendering (consistent with image workflow)
+            const responseMessage = `I imported "${recipe.name}" from that URL and added it to the menu! ${recipe.ingredients.length} ingredients and ${recipe.instructions.length} steps.`;
+            if (writer) {
+              writer.write({
+                type: "data-recipe-extracted",
+                data: {
+                  recipe: {
+                    ...recipe,
+                    sourceType: "url" as const,
+                  },
+                  message: responseMessage,
+                },
+              });
+            }
+
             return {
               success: true,
               action: "updateMenuPlan",
               menuPlan,
-              message: `Imported "${recipe.name}" from URL.`,
+              message: responseMessage,
               recipe,
             };
           },
@@ -451,11 +475,26 @@ Make the recipe practical and achievable for a home cook.`,
             // Persist to session
             await updateSessionState(db, userId, sessionId, { menuPlan });
 
+            // Emit recipe data part for client rendering (consistent with image/URL workflows)
+            const responseMessage = `I created "${recipe.name}" for you and added it to the menu! ${recipe.ingredients.length} ingredients and ${recipe.instructions.length} steps.`;
+            if (writer) {
+              writer.write({
+                type: "data-recipe-extracted",
+                data: {
+                  recipe: {
+                    ...recipe,
+                    sourceType: "ai" as const,
+                  },
+                  message: responseMessage,
+                },
+              });
+            }
+
             return {
               success: true,
               action: "updateMenuPlan",
               menuPlan,
-              message: `Created recipe for "${recipe.name}".`,
+              message: responseMessage,
               recipe,
             };
           },
@@ -478,6 +517,20 @@ Make the recipe practical and achievable for a home cook.`,
                 return { success: false, error: "Invalid index" };
               }
               const removed = menuPlan.newRecipes.splice(data.index, 1)[0];
+
+              // Remove from processedUrls if this was a URL-based recipe
+              if (removed.sourceUrl && menuPlan.processedUrls) {
+                menuPlan.processedUrls = menuPlan.processedUrls.filter(
+                  (url) => url !== removed.sourceUrl
+                );
+              }
+
+              // Remove from processedImageHashes if this was an image-based recipe
+              if (removed.imageHash && menuPlan.processedImageHashes) {
+                menuPlan.processedImageHashes = menuPlan.processedImageHashes.filter(
+                  (hash) => hash !== removed.imageHash
+                );
+              }
 
               // Update currentData in place so subsequent tool calls see the change
               currentData.menuPlan = menuPlan;

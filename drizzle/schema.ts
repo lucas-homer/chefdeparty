@@ -283,6 +283,9 @@ export const wizardSessions = sqliteTable("wizard_sessions", {
   })
     .notNull()
     .default("party-info"),
+  // Tracks the furthest step reached (for enabling forward navigation after going back)
+  // 0 = party-info, 1 = guests, 2 = menu, 3 = timeline
+  furthestStepIndex: integer("furthest_step_index").notNull().default(0),
   // JSON fields - dates stored as ISO strings, parsed at boundary
   partyInfo: text("party_info", { mode: "json" }).$type<SerializedPartyInfo | null>(),
   guestList: text("guest_list", { mode: "json" })
@@ -347,6 +350,7 @@ export interface SerializedMenuPlan {
     description?: string;
     sourceUrl?: string;
     sourceType?: string;
+    imageHash?: string;
     ingredients: Array<{ amount?: string; unit?: string; ingredient: string; notes?: string }>;
     instructions: Array<{ step: number; description: string }>;
     prepTimeMinutes?: number | null;
@@ -358,6 +362,8 @@ export interface SerializedMenuPlan {
   }>;
   dietaryRestrictions?: string[];
   ambitionLevel?: string;
+  processedUrls?: string[];
+  processedImageHashes?: string[];
 }
 
 export interface SerializedTimelineTask {

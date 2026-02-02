@@ -337,7 +337,7 @@ const recipesRoutes = new Hono<AppContext>()
     const { messages } = await c.req.json();
 
     // Dynamically import AI dependencies
-    const { streamText, tool } = await import("ai");
+    const { streamText, tool, stepCountIs } = await import("ai");
     const { createAI } = await import("../../lib/ai");
     const { defaultModel } = createAI(c.env.GOOGLE_GENERATIVE_AI_API_KEY);
 
@@ -375,10 +375,10 @@ Be conversational and helpful.`,
           },
         }),
       },
-      maxSteps: 5,
+      stopWhen: stepCountIs(5),
     });
 
-    return result.toDataStreamResponse();
+    return result.toUIMessageStreamResponse();
   });
 
 // Export type for client

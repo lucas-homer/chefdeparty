@@ -1,27 +1,29 @@
 import React from "react";
 import type { WizardStep } from "./types";
-import { WIZARD_STEPS, STEP_LABELS } from "./types";
+import { WIZARD_STEPS, STEP_LABELS, STEP_LABELS_SHORT } from "./types";
 
 interface WizardProgressProps {
   currentStep: WizardStep;
   onStepClick?: (step: WizardStep) => void;
-  completedSteps?: WizardStep[];
+  furthestStepIndex?: number; // 0 = party-info, 1 = guests, 2 = menu, 3 = timeline
 }
 
 export function WizardProgress({
   currentStep,
   onStepClick,
-  completedSteps = [],
+  furthestStepIndex = 0,
 }: WizardProgressProps) {
   const currentIndex = WIZARD_STEPS.indexOf(currentStep);
 
   return (
-    <div className="flex items-center justify-between px-4 py-3 border-b bg-muted/30">
+    <div className="flex items-center justify-between px-2 sm:px-4 py-3 overflow-x-auto">
       {WIZARD_STEPS.map((step, index) => {
-        const isComplete = completedSteps.includes(step);
         const isCurrent = step === currentStep;
-        const isPast = index < currentIndex;
-        const canClick = isPast || isComplete;
+        // A step is reachable if it's at or before the furthest step we've reached
+        const isReachable = index <= furthestStepIndex;
+        // A step is "complete" (shows checkmark) if it's before the furthest step
+        const isComplete = index < furthestStepIndex;
+        const canClick = isReachable && !isCurrent;
 
         return (
           <React.Fragment key={step}>
@@ -30,12 +32,12 @@ export function WizardProgress({
               onClick={() => canClick && onStepClick?.(step)}
               disabled={!canClick}
               className={`
-                flex items-center gap-2 px-3 py-1.5 rounded-full text-sm font-medium
-                transition-colors
+                flex items-center gap-1 sm:gap-2 px-2 sm:px-3 py-1.5 rounded-full text-xs sm:text-sm font-medium
+                transition-colors whitespace-nowrap flex-shrink-0
                 ${
                   isCurrent
                     ? "bg-primary text-primary-foreground"
-                    : isComplete || isPast
+                    : isReachable
                       ? "bg-primary/10 text-primary hover:bg-primary/20 cursor-pointer"
                       : "bg-muted text-muted-foreground cursor-not-allowed"
                 }
@@ -47,7 +49,7 @@ export function WizardProgress({
                   ${
                     isCurrent
                       ? "bg-primary-foreground/20"
-                      : isComplete || isPast
+                      : isReachable
                         ? "bg-primary/20"
                         : "bg-muted-foreground/20"
                   }
@@ -65,6 +67,8 @@ export function WizardProgress({
                   index + 1
                 )}
               </span>
+              {/* Short label on mobile, full label on desktop */}
+              <span className="sm:hidden">{STEP_LABELS_SHORT[step]}</span>
               <span className="hidden sm:inline">{STEP_LABELS[step]}</span>
             </button>
 
@@ -72,8 +76,8 @@ export function WizardProgress({
             {index < WIZARD_STEPS.length - 1 && (
               <div
                 className={`
-                  flex-1 h-0.5 mx-2
-                  ${isPast || isComplete ? "bg-primary/40" : "bg-muted"}
+                  flex-1 h-0.5 mx-1 sm:mx-2 min-w-2
+                  ${index < furthestStepIndex ? "bg-primary/40" : "bg-muted"}
                 `}
               />
             )}

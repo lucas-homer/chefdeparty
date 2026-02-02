@@ -12,6 +12,14 @@ export const STEP_LABELS: Record<WizardStep, string> = {
   timeline: "Timeline",
 };
 
+// Abbreviated labels for mobile
+export const STEP_LABELS_SHORT: Record<WizardStep, string> = {
+  "party-info": "Info",
+  guests: "Guests",
+  menu: "Menu",
+  timeline: "Timeline",
+};
+
 // Party info data
 export interface PartyInfoData {
   name: string;
@@ -42,6 +50,7 @@ export interface NewRecipeData {
   description?: string;
   sourceUrl?: string;
   sourceType?: "url" | "photo" | "ai" | "manual";
+  imageHash?: string; // Hash of source image for deduplication tracking
   ingredients: Array<{
     amount?: string;
     unit?: string;
@@ -66,6 +75,8 @@ export interface MenuPlanData {
   newRecipes: NewRecipeData[];
   dietaryRestrictions?: string[];
   ambitionLevel?: "simple" | "moderate" | "ambitious";
+  processedUrls?: string[];
+  processedImageHashes?: string[];
 }
 
 // Timeline task
@@ -85,6 +96,7 @@ export interface WizardSession {
   id: string;
   userId: string;
   currentStep: WizardStep;
+  furthestStepIndex: number; // 0 = party-info, 1 = guests, 2 = menu, 3 = timeline
   partyInfo: PartyInfoData | null;
   guestList: GuestData[];
   menuPlan: MenuPlanData | null;
