@@ -30,6 +30,84 @@ import type { WizardMessage, StepConfirmationRequest } from "./wizard-message-ty
 import type { Env } from "../index";
 import type { createDb } from "./db";
 
+// Schema for timeline task generation (used by both tool and workflow)
+const TimelineTaskSchema = z.object({
+  recipeId: z.string().nullable(),
+  recipeName: z.string().optional(),
+  description: z.string(),
+  daysBeforeParty: z.number(),
+  scheduledTime: z.string(),
+  durationMinutes: z.number(),
+  isPhaseStart: z.boolean(),
+  phaseDescription: z.string().nullable(),
+});
+
+/**
+ * Generate a cooking timeline for the party.
+ * Extracted as a helper function to be used by both the generateTimeline tool
+ * and the auto-generate workflow when entering the timeline step.
+ */
+export async function generateTimelineForParty(
+  partyInfo: PartyInfoData,
+  menuPlan: MenuPlanData | null | undefined,
+  env: Env
+): Promise<TimelineTaskData[]> {
+  const { generateObject } = await import("ai");
+  const { createAI } = await import("./ai");
+  const { defaultModel } = createAI(env.GOOGLE_GENERATIVE_AI_API_KEY);
+
+  // Build menu summary
+  const menuItems = [
+    ...(menuPlan?.existingRecipes?.map((r) => r.name) || []),
+    ...(menuPlan?.newRecipes?.map((r) => r.name) || []),
+  ];
+
+  const partyDate = new Date(partyInfo.dateTime);
+  const partyTime = partyDate.toLocaleTimeString("en-US", {
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  });
+
+  const prompt = `Create a cooking timeline for a party.
+
+PARTY DETAILS:
+- Serving time: ${partyDate.toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric", year: "numeric" })} at ${partyTime}
+- Menu items: ${menuItems.length > 0 ? menuItems.join(", ") : "No specific menu - create a general party prep timeline"}
+
+Create a practical timeline that includes:
+1. Grocery shopping (1-2 days before)
+2. Any advance prep (day before)
+3. Day-of cooking tasks with specific times
+4. Final prep before guests arrive
+
+For each task:
+- daysBeforeParty: 0 = day of party, 1 = day before, etc.
+- scheduledTime: 24h format like "09:00"
+- durationMinutes: realistic time estimate
+- isPhaseStart: true for major milestones (shopping, cooking start, final prep)
+- phaseDescription: friendly reminder message for phase starts
+
+Keep it manageable - don't overwhelm with too many tasks.`;
+
+  const result = await generateObject({
+    model: defaultModel,
+    schema: z.object({ tasks: z.array(TimelineTaskSchema) }),
+    prompt,
+  });
+
+  return result.object.tasks.map((task) => ({
+    recipeId: null,
+    recipeName: task.recipeName,
+    description: task.description,
+    daysBeforeParty: task.daysBeforeParty,
+    scheduledTime: task.scheduledTime,
+    durationMinutes: task.durationMinutes,
+    isPhaseStart: task.isPhaseStart,
+    phaseDescription: task.phaseDescription ?? undefined,
+  }));
+}
+
 interface ToolContext {
   db: ReturnType<typeof createDb>;
   userId: string;
@@ -194,6 +272,14 @@ export function getWizardTools(step: WizardStep, context: ToolContext): ToolSet 
             { input: { name: "John Smith", email: "john@work.com", phone: "555-0123" } },
           ] as const,
           execute: async (data) => {
+            // Validate that at least email or phone is provided
+            if (!data.email && !data.phone) {
+              return {
+                success: false,
+                error: "Either email or phone is required to add a guest.",
+              };
+            }
+
             const guestList: GuestData[] = [...(currentData.guestList || [])];
             guestList.push({
               name: data.name,
@@ -637,71 +723,8 @@ Make the recipe practical and achievable for a home cook.`,
               return { success: false, error: "No party info available" };
             }
 
-            const { generateObject } = await import("ai");
-            const { createAI } = await import("./ai");
-            const { defaultModel } = createAI(env.GOOGLE_GENERATIVE_AI_API_KEY);
-
-            // Build menu summary
-            const menuItems = [
-              ...(menuPlan?.existingRecipes?.map((r) => r.name) || []),
-              ...(menuPlan?.newRecipes?.map((r) => r.name) || []),
-            ];
-
-            const partyDate = new Date(partyInfo.dateTime);
-            const partyTime = partyDate.toLocaleTimeString("en-US", {
-              hour: "2-digit",
-              minute: "2-digit",
-              hour12: false,
-            });
-
-            const TimelineTaskSchema = z.object({
-              recipeId: z.string().nullable(),
-              recipeName: z.string().optional(),
-              description: z.string(),
-              daysBeforeParty: z.number(),
-              scheduledTime: z.string(),
-              durationMinutes: z.number(),
-              isPhaseStart: z.boolean(),
-              phaseDescription: z.string().nullable(),
-            });
-
-            const prompt = `Create a cooking timeline for a party.
-
-PARTY DETAILS:
-- Serving time: ${partyDate.toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric", year: "numeric" })} at ${partyTime}
-- Menu items: ${menuItems.length > 0 ? menuItems.join(", ") : "No specific menu - create a general party prep timeline"}
-
-Create a practical timeline that includes:
-1. Grocery shopping (1-2 days before)
-2. Any advance prep (day before)
-3. Day-of cooking tasks with specific times
-4. Final prep before guests arrive
-
-For each task:
-- daysBeforeParty: 0 = day of party, 1 = day before, etc.
-- scheduledTime: 24h format like "09:00"
-- durationMinutes: realistic time estimate
-- isPhaseStart: true for major milestones (shopping, cooking start, final prep)
-- phaseDescription: friendly reminder message for phase starts
-
-Keep it manageable - don't overwhelm with too many tasks.`;
-
-            const result = await generateObject({
-              model: defaultModel,
-              schema: z.object({ tasks: z.array(TimelineTaskSchema) }),
-              prompt,
-            });
-
-            const timeline: TimelineTaskData[] = result.object.tasks.map((task) => ({
-              recipeId: null,
-              recipeName: task.recipeName,
-              description: task.description,
-              daysBeforeParty: task.daysBeforeParty,
-              scheduledTime: task.scheduledTime,
-              durationMinutes: task.durationMinutes,
-              isPhaseStart: task.isPhaseStart,
-              phaseDescription: task.phaseDescription ?? undefined,
-            }));
+            // Use the shared helper function
+            const timeline = await generateTimelineForParty(partyInfo, menuPlan, env);
 
             // Update currentData in place so subsequent tool calls see the change
             currentData.timeline = timeline;
@@ -709,11 +732,21 @@ Keep it manageable - don't overwhelm with too many tasks.`;
             // Persist to session
             await updateSessionState(db, userId, sessionId, { timeline });
 
+            const responseMessage = `Created ${timeline.length} tasks for your cooking timeline.`;
+
+            // Emit data part for interactive timeline preview
+            if (writer) {
+              writer.write({
+                type: "data-timeline-generated",
+                data: { timeline, message: responseMessage },
+              });
+            }
+
             return {
               success: true,
               action: "updateTimeline",
               timeline,
-              message: `Created ${timeline.length} tasks for your cooking timeline.`,
+              message: responseMessage,
             };
           },
         }),

@@ -5,10 +5,12 @@ import { WizardProgress } from "./WizardProgress";
 import { WizardCreating } from "./WizardCreating";
 import { RecipePicker } from "./RecipePicker";
 import { MenuSidebar } from "./MenuSidebar";
+import { TimelinePreview } from "./TimelinePreview";
 import { useWizardState } from "./useWizardState";
 import type {
   WizardStep,
   UserRecipe,
+  TimelineTaskData,
 } from "./types";
 import { WIZARD_STEPS } from "./types";
 
@@ -106,6 +108,8 @@ function PartyWizardChatInner({
   // Track request IDs that have been decided (approved or revision requested)
   // This persists so old confirmation UIs stay hidden
   const [locallyDecidedIds, setLocallyDecidedIds] = useState<Set<string>>(new Set());
+  // Curated timeline from TimelinePreview - used when completing wizard
+  const [curatedTimeline, setCuratedTimeline] = useState<TimelineTaskData[] | null>(null);
 
   // Get current step from session
   const currentStep = session.currentStep as WizardStep;
@@ -323,7 +327,8 @@ function PartyWizardChatInner({
           },
           guestList: session.guestList || [],
           menuPlan: session.menuPlan || { existingRecipes: [], newRecipes: [] },
-          timeline: session.timeline || [],
+          // Use curated timeline if available, otherwise fall back to session timeline
+          timeline: curatedTimeline || session.timeline || [],
         }),
       });
 
@@ -673,8 +678,41 @@ function PartyWizardChatInner({
       );
     }
 
-    // Skip other data parts and tool parts
-    if (part.type.startsWith("data-") || part.type.startsWith("tool-")) {
+    // Timeline generated - show interactive preview
+    if (part.type === "data-timeline-generated") {
+      const data = (part as {
+        data: {
+          timeline: TimelineTaskData[];
+          message: string;
+        };
+      }).data;
+
+      return (
+        <div key={index} className="space-y-3">
+          <p className="whitespace-pre-wrap">{data.message}</p>
+          <TimelinePreview
+            timeline={data.timeline}
+            onCurationChange={setCuratedTimeline}
+          />
+        </div>
+      );
+    }
+
+    // Show tool result messages to users (e.g., "Added John to the guest list")
+    if (part.type === "tool-result") {
+      const toolResult = (part as { result?: { message?: string } }).result;
+      if (toolResult?.message) {
+        return (
+          <div key={index} className="text-sm">
+            {toolResult.message}
+          </div>
+        );
+      }
+      return null;
+    }
+
+    // Skip tool-invocation and other internal parts
+    if (part.type.startsWith("tool-") || part.type.startsWith("data-")) {
       return null;
     }
 

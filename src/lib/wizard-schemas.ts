@@ -160,14 +160,13 @@ export const confirmPartyInfoToolSchema = z.object({
 });
 
 // Guest Tools
+// Note: We use a non-refined schema for the tool definition to avoid issues with AI SDK schema generation.
+// The email/phone validation is done in the execute function instead.
 export const addGuestToolSchema = z.object({
   name: z.string().optional().describe("Guest's display name (e.g., 'Sarah Johnson', 'Mom')"),
   email: z.string().email().optional().describe("Guest's email address for sending the invitation"),
   phone: z.string().optional().describe("Guest's phone number - use this if no email is provided"),
-}).refine(
-  (data) => data.email || data.phone,
-  { message: "Either email or phone is required" }
-);
+});
 
 export const removeGuestToolSchema = z.object({
   index: z.number().int().min(0).describe("Zero-based index of the guest to remove from the list"),

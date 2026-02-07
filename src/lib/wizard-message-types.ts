@@ -68,6 +68,10 @@ export type WizardDataParts = {
     recipe: ExtractedRecipeData;
     message: string;
   };
+  "timeline-generated": {
+    timeline: TimelineTaskData[];
+    message: string;
+  };
 };
 
 // Type the message with our tool definitions and data parts
