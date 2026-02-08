@@ -85,11 +85,8 @@ interface GuestFormProps {
 }
 
 function GuestForm({ partyId, onSuccess, onCancel }: GuestFormProps) {
-  const [contactType, setContactType] = useState<"email" | "phone">("email");
   const [email, setEmail] = useState("");
-  const [phone, setPhone] = useState("");
   const [name, setName] = useState("");
-  const [smsConsent, setSmsConsent] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -103,8 +100,7 @@ function GuestForm({ partyId, onSuccess, onCancel }: GuestFormProps) {
         const response = await client.parties[":id"].guests.$post({
           param: { id: partyId },
           json: {
-            email: contactType === "email" ? email : undefined,
-            phone: contactType === "phone" ? phone : undefined,
+            email,
             name: name || undefined,
           },
         });
@@ -121,11 +117,10 @@ function GuestForm({ partyId, onSuccess, onCancel }: GuestFormProps) {
         setSaving(false);
       }
     },
-    [partyId, contactType, email, phone, name, onSuccess]
+    [partyId, email, name, onSuccess]
   );
 
-  const isValidContact = contactType === "email" ? email.trim() !== "" : phone.trim() !== "";
-  const isValid = isValidContact && (contactType === "email" || smsConsent);
+  const isValid = email.trim() !== "";
 
   return (
     <form onSubmit={handleSubmit} className="space-y-4">
@@ -135,75 +130,18 @@ function GuestForm({ partyId, onSuccess, onCancel }: GuestFormProps) {
         </div>
       )}
 
-      {/* Contact Type Tabs */}
-      <div className="flex border-b">
-        <button
-          type="button"
-          onClick={() => setContactType("email")}
-          className={`flex-1 py-2 text-sm font-medium border-b-2 -mb-px transition-colors ${
-            contactType === "email"
-              ? "border-primary text-foreground"
-              : "border-transparent text-muted-foreground hover:text-foreground"
-          }`}
-        >
-          Email
-        </button>
-        <button
-          type="button"
-          onClick={() => setContactType("phone")}
-          className={`flex-1 py-2 text-sm font-medium border-b-2 -mb-px transition-colors ${
-            contactType === "phone"
-              ? "border-primary text-foreground"
-              : "border-transparent text-muted-foreground hover:text-foreground"
-          }`}
-        >
-          Phone
-        </button>
+      <div className="space-y-2">
+        <label className="text-sm font-medium">Email *</label>
+        <input
+          type="email"
+          value={email}
+          onChange={(e: ChangeEvent<HTMLInputElement>) => setEmail(e.target.value)}
+          className="w-full px-3 py-2 border rounded-md"
+          placeholder="guest@example.com"
+          required
+          autoFocus
+        />
       </div>
-
-      {contactType === "email" ? (
-        <div className="space-y-2">
-          <label className="text-sm font-medium">Email *</label>
-          <input
-            type="email"
-            value={email}
-            onChange={(e: ChangeEvent<HTMLInputElement>) => setEmail(e.target.value)}
-            className="w-full px-3 py-2 border rounded-md"
-            placeholder="guest@example.com"
-            required
-            autoFocus
-          />
-        </div>
-      ) : (
-        <div className="space-y-3">
-          <div className="space-y-2">
-            <label className="text-sm font-medium">Phone *</label>
-            <input
-              type="tel"
-              value={phone}
-              onChange={(e: ChangeEvent<HTMLInputElement>) => setPhone(e.target.value)}
-              className="w-full px-3 py-2 border rounded-md"
-              placeholder="+1 (555) 555-1234"
-              required
-              autoFocus
-            />
-            <p className="text-xs text-muted-foreground">
-              Include country code for international numbers
-            </p>
-          </div>
-          <label className="flex items-start gap-2 cursor-pointer">
-            <input
-              type="checkbox"
-              checked={smsConsent}
-              onChange={(e: ChangeEvent<HTMLInputElement>) => setSmsConsent(e.target.checked)}
-              className="mt-0.5 rounded"
-            />
-            <span className="text-xs text-muted-foreground">
-              I confirm I have this person's consent to receive SMS messages from this service
-            </span>
-          </label>
-        </div>
-      )}
 
       <div className="space-y-2">
         <label className="text-sm font-medium">Name (optional)</label>

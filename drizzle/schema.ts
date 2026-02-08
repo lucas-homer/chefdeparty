@@ -89,6 +89,7 @@ export const guests = sqliteTable("guests", {
   dietaryRestrictions: text("dietary_restrictions", { mode: "json" }).$type<
     string[]
   >(),
+  guestToken: text("guest_token").unique(), // Per-guest invite link token
   createdAt: integer("created_at", { mode: "timestamp" })
     .$defaultFn(() => new Date()),
 });
