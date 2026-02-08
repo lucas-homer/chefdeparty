@@ -21,7 +21,7 @@
 - `.github/workflows/create-release.yml`
   - `workflow_dispatch`:
     - Manually creates a semver tag (`major|minor|patch`) from `main`.
-    - Publishes a GitHub release with generated notes.
+    - Publishes a GitHub release with generated notes using `RELEASE_PUBLISH_TOKEN` (PAT).
     - Triggers production deployment via `release.published`.
 - `wrangler.toml`
   - Added `[env.staging]` with `APP_URL=https://staging.chefde.party`.
@@ -58,6 +58,8 @@
      - `GOOGLE_GENERATIVE_AI_API_KEY`
      - `RESEND_API_KEY`
      - `ADMIN_EMAILS`
+   - Add repository secret:
+     - `RELEASE_PUBLISH_TOKEN` (PAT with repo contents/release write access)
    - Optional secrets (if used):
      - `LANGFUSE_PUBLIC_KEY`
      - `LANGFUSE_SECRET_KEY`

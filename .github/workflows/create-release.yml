@@ -29,12 +29,23 @@ jobs:
   create-release:
     if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
+    env:
+      RELEASE_PUBLISH_TOKEN: ${{ secrets.RELEASE_PUBLISH_TOKEN }}
     steps:
       - name: Checkout main
         uses: actions/checkout@v4
         with:
           ref: main
           fetch-depth: 0
+
+      - name: Validate release publish token
+        run: |
+          set -euo pipefail
+          if [ -z "${RELEASE_PUBLISH_TOKEN:-}" ]; then
+            echo "Missing required secret: RELEASE_PUBLISH_TOKEN"
+            echo "Configure a PAT so release.published can trigger downstream workflows."
+            exit 1
+          fi
 
       - name: Fetch tags
         run: git fetch --tags --force
@@ -107,6 +118,7 @@ jobs:
       - name: Publish GitHub release
         uses: softprops/action-gh-release@v2
         with:
+          token: ${{ env.RELEASE_PUBLISH_TOKEN }}
           tag_name: ${{ steps.version.outputs.next_tag }}
           target_commitish: main
           name: ${{ steps.version.outputs.next_tag }} (${{ steps.version.outputs.release_date }})
