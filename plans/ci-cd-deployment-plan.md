@@ -18,6 +18,11 @@
   - `release.published`:
     - Runs checks, then deploys Worker to `production` environment.
     - Applies D1 migrations to production database before deploy.
+- `.github/workflows/create-release.yml`
+  - `workflow_dispatch`:
+    - Manually creates a semver tag (`major|minor|patch`) from `main`.
+    - Publishes a GitHub release with generated notes.
+    - Triggers production deployment via `release.published`.
 - `wrangler.toml`
   - Added `[env.staging]` with `APP_URL=https://staging.chefde.party`.
   - Added explicit staging D1 binding.
@@ -97,5 +102,5 @@ You likely need an additional OAuth client for staging.
 3. Merge PR.
 4. `push` to `main` triggers automatic staging deploy.
 5. Validate staging at `https://staging.chefde.party`.
-6. Publish GitHub release.
+6. Run **Create Release** workflow (`major|minor|patch`) to publish a GitHub release.
 7. `release.published` triggers automatic production deploy.
