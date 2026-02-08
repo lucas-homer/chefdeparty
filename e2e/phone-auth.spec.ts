@@ -7,6 +7,8 @@ import { testParties } from "./fixtures/seed-data";
  */
 
 test.describe("Guest Dialog - Phone Support", () => {
+  test.skip(true, "Guest phone invitations are temporarily paused pending Twilio 10DLC setup.");
+
   test("should show email/phone tabs in add guest dialog", async ({ page }) => {
     await page.goto(`/parties/${testParties.upcoming.id}/guests`);
 

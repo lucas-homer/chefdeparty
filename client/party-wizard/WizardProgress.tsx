@@ -13,8 +13,6 @@ export function WizardProgress({
   onStepClick,
   furthestStepIndex = 0,
 }: WizardProgressProps) {
-  const currentIndex = WIZARD_STEPS.indexOf(currentStep);
-
   return (
     <div className="flex items-center justify-between px-2 sm:px-4 py-3 overflow-x-auto">
       {WIZARD_STEPS.map((step, index) => {

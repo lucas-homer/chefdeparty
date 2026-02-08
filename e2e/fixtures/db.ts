@@ -21,13 +21,10 @@ function execSql(sql: string): void {
   try {
     // Escape single quotes in SQL for shell
     const escapedSql = sql.replace(/'/g, "'\\''");
-    execSync(
-      `npx wrangler d1 execute chefdeparty-db --local --command='${escapedSql}'`,
-      {
-        stdio: "pipe",
-        cwd: process.cwd(),
-      }
-    );
+    execSync(`npx wrangler d1 execute DB --local --command='${escapedSql}'`, {
+      stdio: "pipe",
+      cwd: process.cwd(),
+    });
   } catch (error) {
     console.error("Failed to execute SQL:", sql.slice(0, 100) + "...");
     throw error;

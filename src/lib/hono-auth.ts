@@ -35,11 +35,6 @@ export interface AuthUser {
   image: string | null;
 }
 
-// Get the base URL for callbacks
-function getBaseUrl(env: Env): string {
-  return env.APP_URL || "https://chefde.party";
-}
-
 // Create Auth.js configuration for Hono
 export function getAuthConfig(c: Context<{ Bindings: Env }>) {
   const db = createDb(c.env.DB);

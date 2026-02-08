@@ -1,6 +1,6 @@
 import { Hono } from "hono";
 import { zValidator } from "@hono/zod-validator";
-import { eq, and } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 import {
   users,
   sessions,
@@ -10,7 +10,7 @@ import {
   phoneVerificationTokens,
 } from "../../../drizzle/schema";
 import { sendOtpSchema, verifyOtpSchema } from "../../lib/schemas";
-import { normalizePhone, isValidPhone } from "../../lib/phone";
+import { normalizePhone } from "../../lib/phone";
 import { getTwilioConfig, sendOtp, verifyOtp } from "../../lib/sms";
 import { checkOtpRateLimit, getClientIp, resetRateLimit } from "../../lib/rate-limit";
 import type { Env } from "../../index";
@@ -57,7 +57,6 @@ const phoneAuthRoutes = new Hono<AppContext>()
     // If new user, validate invite code requirement
     if (!existingUser) {
       // Check if admin
-      const adminEmails = c.env.ADMIN_EMAILS?.split(",").map((e) => e.trim().toLowerCase()) || [];
       const isAdminPhone = false; // Phone numbers don't bypass invite requirement by default
 
       if (!isAdminPhone) {

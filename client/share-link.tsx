@@ -15,7 +15,7 @@ function ShareLinkCard({ shareUrl, title = "Share Link", description }: ShareLin
       await navigator.clipboard.writeText(shareUrl);
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
-    } catch (err) {
+    } catch (_err) {
       // Fallback for older browsers
       const input = document.createElement("input");
       input.value = shareUrl;

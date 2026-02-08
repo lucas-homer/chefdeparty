@@ -1,4 +1,4 @@
-import type { Context, MiddlewareHandler, Next } from "hono";
+import type { Context, MiddlewareHandler } from "hono";
 
 // Re-define AuthUser type locally to avoid circular import issues
 export interface AuthUser {

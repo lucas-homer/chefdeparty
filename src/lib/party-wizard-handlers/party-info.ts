@@ -26,7 +26,6 @@ export async function handlePartyInfoStep(ctx: HandlerContext): Promise<Response
     db,
     user,
     env,
-    session,
     sessionId,
     step,
     currentData,

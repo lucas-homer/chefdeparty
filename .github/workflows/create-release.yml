@@ -1,0 +1,114 @@
+name: Create Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      bump:
+        description: "Semver bump type"
+        required: true
+        default: patch
+        type: choice
+        options:
+          - patch
+          - minor
+          - major
+      prerelease:
+        description: "Mark as prerelease"
+        required: true
+        default: false
+        type: boolean
+
+permissions:
+  contents: write
+
+concurrency:
+  group: create-release-main
+  cancel-in-progress: false
+
+jobs:
+  create-release:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout main
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Fetch tags
+        run: git fetch --tags --force
+
+      - name: Configure git identity
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+      - name: Compute next tag
+        id: version
+        env:
+          BUMP: ${{ inputs.bump }}
+        run: |
+          set -euo pipefail
+
+          latest_tag="$(git tag -l 'v*' --sort=-version:refname | head -n 1)"
+          if [ -z "${latest_tag}" ]; then
+            current_version="$(node -p "require('./package.json').version")"
+            latest_tag="v${current_version}"
+          fi
+
+          next_tag="$(LATEST_TAG="${latest_tag}" BUMP="${BUMP}" node <<'NODE'
+          const latestTag = process.env.LATEST_TAG;
+          const bump = process.env.BUMP;
+
+          const match = /^v(\d+)\.(\d+)\.(\d+)$/.exec(latestTag);
+          if (!match) {
+            throw new Error(`Unsupported tag format: ${latestTag}. Expected v<major>.<minor>.<patch>`);
+          }
+
+          let major = Number(match[1]);
+          let minor = Number(match[2]);
+          let patch = Number(match[3]);
+
+          if (bump === "major") {
+            major += 1;
+            minor = 0;
+            patch = 0;
+          } else if (bump === "minor") {
+            minor += 1;
+            patch = 0;
+          } else if (bump === "patch") {
+            patch += 1;
+          } else {
+            throw new Error(`Unsupported bump type: ${bump}`);
+          }
+
+          process.stdout.write(`v${major}.${minor}.${patch}`);
+          NODE
+          )"
+
+          if git rev-parse -q --verify "refs/tags/${next_tag}" >/dev/null; then
+            echo "Tag ${next_tag} already exists."
+            exit 1
+          fi
+
+          release_date="$(date -u +%Y-%m-%d)"
+
+          echo "latest_tag=${latest_tag}" >> "${GITHUB_OUTPUT}"
+          echo "next_tag=${next_tag}" >> "${GITHUB_OUTPUT}"
+          echo "release_date=${release_date}" >> "${GITHUB_OUTPUT}"
+
+      - name: Create and push tag
+        run: |
+          set -euo pipefail
+          git tag -a "${{ steps.version.outputs.next_tag }}" -m "Release ${{ steps.version.outputs.next_tag }}"
+          git push origin "${{ steps.version.outputs.next_tag }}"
+
+      - name: Publish GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.version.outputs.next_tag }}
+          target_commitish: main
+          name: ${{ steps.version.outputs.next_tag }} (${{ steps.version.outputs.release_date }})
+          generate_release_notes: true
+          prerelease: ${{ inputs.prerelease }}

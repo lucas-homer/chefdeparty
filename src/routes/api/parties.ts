@@ -1,7 +1,6 @@
 import { Hono } from "hono";
 import { zValidator } from "@hono/zod-validator";
 import { eq, and, desc, asc } from "drizzle-orm";
-import type { generateObject as GenerateObjectType } from "ai";
 import { z } from "zod";
 import {
   parties,
@@ -16,11 +15,9 @@ import {
 } from "../../../drizzle/schema";
 import { requireAuth, getUser } from "../../lib/hono-auth";
 import {
-  createPartySchema,
   updatePartySchema,
   createGuestSchema,
   updateGuestSchema,
-  addToMenuSchema,
   updateTimelineTaskSchema,
   inviteGuestsSchema,
 } from "../../lib/schemas";

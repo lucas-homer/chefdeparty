@@ -46,7 +46,7 @@ export function TimelinePreview({ timeline, onCurationChange }: TimelinePreviewP
   useEffect(() => {
     const curated = timeline
       .filter((_, index) => !removedIndices.has(index))
-      .map((task, _, arr) => {
+      .map((task) => {
         // Find original index in the unfiltered timeline
         const originalIndex = timeline.indexOf(task);
         // If split out, mark as phase start (own reminder)

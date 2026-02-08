@@ -7,7 +7,6 @@ import {
   createAuthRoutes,
   getAuthConfig,
   getUser,
-  requireAuth,
 } from "./lib/hono-auth";
 import { initAuthConfig, verifyAuth } from "@hono/auth-js";
 import { PartyReminder } from "./durable-objects/party-reminder";
@@ -72,7 +71,7 @@ app.use("*", async (c, next) => {
   try {
     const middleware = verifyAuth();
     await middleware(c, next);
-  } catch (e) {
+  } catch (_e) {
     // If verifyAuth throws (401), just continue without setting authUser
     await next();
   }
