@@ -12,6 +12,10 @@ interface LayoutProps {
   children?: ReactNode;
 }
 
+const darkModeScript = `(function(){var t=localStorage.getItem('theme');if(t==='dark'||(t!=='light'&&matchMedia('(prefers-color-scheme:dark)').matches))document.documentElement.classList.add('dark')})()`;
+
+const seasonScript = `(function(){var m=new Date().getMonth();var s=m>=2&&m<=4?'haru':m>=5&&m<=7?'natsu':m>=8&&m<=10?'aki':'fuyu';var el=document.getElementById('season-mark');if(el)el.dataset.season=s})()`;
+
 export const Layout: FC<LayoutProps> = ({
   title = "ChefDeParty",
   user,
@@ -25,20 +29,23 @@ export const Layout: FC<LayoutProps> = ({
         <meta name="viewport" content="width=device-width, initial-scale=1.0" />
         <title>{title}</title>
         <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+        <link rel="preconnect" href="https://fonts.googleapis.com" />
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
         <link href="/assets/main.css" rel="stylesheet" />
+        <script dangerouslySetInnerHTML={{ __html: darkModeScript }} />
       </head>
-      <body className="min-h-screen bg-background">
+      <body className="min-h-screen bg-background omakase-texture">
         {user && (
-          <header className="border-b">
+          <header className="nav-omakase">
             <div className="container mx-auto px-4 py-4 flex items-center justify-between">
-              <a href="/parties" className="text-xl font-bold hover:text-primary">
+              <a href="/parties" className="logo-omakase">
                 ChefDeParty
               </a>
               <nav className="flex items-center gap-6">
-                <a href="/parties" className="hidden md:block text-sm hover:text-primary">
+                <a href="/parties" className="hidden md:block nav-link-omakase">
                   Parties
                 </a>
-                <a href="/recipes" className="hidden md:block text-sm hover:text-primary">
+                <a href="/recipes" className="hidden md:block nav-link-omakase">
                   Recipes
                 </a>
                 <div
@@ -93,6 +100,12 @@ export const Layout: FC<LayoutProps> = ({
             }}
           />
         )}
+        {user && (
+          <>
+            <div id="season-mark" className="season-mark" />
+            <script dangerouslySetInnerHTML={{ __html: seasonScript }} />
+          </>
+        )}
       </body>
     </html>
   );
@@ -109,9 +122,12 @@ export const PublicLayout: FC<{ title?: string; children?: ReactNode }> = ({
         <meta name="viewport" content="width=device-width, initial-scale=1.0" />
         <title>{title}</title>
         <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+        <link rel="preconnect" href="https://fonts.googleapis.com" />
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
         <link href="/assets/main.css" rel="stylesheet" />
+        <script dangerouslySetInnerHTML={{ __html: darkModeScript }} />
       </head>
-      <body className="min-h-screen bg-background">
+      <body className="min-h-screen bg-background omakase-texture">
         <main>{children}</main>
       </body>
     </html>

@@ -1,104 +1,512 @@
+@import url('https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300..900;1,9..144,300..900&family=Plus+Jakarta+Sans:ital,wght@0,200..800;1,200..800&family=IBM+Plex+Mono:wght@400;500&display=swap');
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
+/* ═══════════════════════════════════════════════════
+   Omakase Design System — "Morning in Kyoto" (Light)
+   ═══════════════════════════════════════════════════ */
 @layer base {
   :root {
-    --background: 0 0% 100%;
-    --foreground: 240 10% 3.9%;
-    --card: 0 0% 100%;
-    --card-foreground: 240 10% 3.9%;
-    --popover: 0 0% 100%;
-    --popover-foreground: 240 10% 3.9%;
-    --primary: 24 95% 53%;
-    --primary-foreground: 0 0% 100%;
-    --secondary: 240 4.8% 95.9%;
-    --secondary-foreground: 240 5.9% 10%;
-    --muted: 240 4.8% 95.9%;
-    --muted-foreground: 240 3.8% 46.1%;
-    --accent: 240 4.8% 95.9%;
-    --accent-foreground: 240 5.9% 10%;
-    --destructive: 0 84.2% 60.2%;
+    /* Surfaces */
+    --background: 40 33% 98%;
+    --foreground: 30 10% 12%;
+    --card: 38 40% 97%;
+    --card-foreground: 30 10% 12%;
+    --popover: 38 40% 97%;
+    --popover-foreground: 30 10% 12%;
+
+    /* Primary — Persimmon */
+    --primary: 18 76% 44%;
+    --primary-foreground: 40 33% 98%;
+
+    /* Secondary — Warm stone */
+    --secondary: 35 15% 93%;
+    --secondary-foreground: 30 10% 20%;
+
+    /* Muted — Soft clay */
+    --muted: 35 12% 93%;
+    --muted-foreground: 30 8% 46%;
+
+    /* Accent — Matcha tint */
+    --accent: 90 94.3% 87.5%;
+    --accent-foreground: 90 50% 18%;
+
+    /* Destructive */
+    --destructive: 0 72% 51%;
     --destructive-foreground: 0 0% 98%;
-    --border: 240 5.9% 90%;
-    --input: 240 5.9% 90%;
-    --ring: 24 95% 53%;
+
+    /* Borders & inputs */
+    --border: 35 15% 88%;
+    --input: 35 15% 88%;
+    --ring: 18 76% 44%;
     --radius: 0.5rem;
-    --chart-1: 12 76% 61%;
-    --chart-2: 173 58% 39%;
-    --chart-3: 197 37% 24%;
-    --chart-4: 43 74% 66%;
-    --chart-5: 27 87% 67%;
+
+    /* Charts */
+    --chart-1: 18 76% 44%;
+    --chart-2: 90 18% 45%;
+    --chart-3: 35 30% 35%;
+    --chart-4: 45 70% 55%;
+    --chart-5: 10 60% 55%;
+
+    /* Omakase tokens */
+    --font-heading: 'Fraunces', 'Georgia', serif;
+    --font-body: 'Plus Jakarta Sans', system-ui, sans-serif;
+    --font-mono: 'IBM Plex Mono', 'Menlo', monospace;
+
+    --shadow-color: 30 20% 50%;
+    --washi-opacity: 0.03;
+    --noren-color: 18 76% 44%;
+    --transition-quick: 150ms;
+    --transition-normal: 250ms;
+    --transition-slow: 400ms;
+    --transition-deliberate: 600ms;
   }
 
+  /* ═══════════════════════════════════════════════════
+     "Evening at the Ryokan" (Dark)
+     ═══════════════════════════════════════════════════ */
   .dark {
-    --background: 240 10% 3.9%;
-    --foreground: 0 0% 98%;
-    --card: 240 10% 3.9%;
-    --card-foreground: 0 0% 98%;
-    --popover: 240 10% 3.9%;
-    --popover-foreground: 0 0% 98%;
-    --primary: 24 95% 53%;
-    --primary-foreground: 0 0% 100%;
-    --secondary: 240 3.7% 15.9%;
-    --secondary-foreground: 0 0% 98%;
-    --muted: 240 3.7% 15.9%;
-    --muted-foreground: 240 5% 64.9%;
-    --accent: 240 3.7% 15.9%;
-    --accent-foreground: 0 0% 98%;
-    --destructive: 0 62.8% 30.6%;
+    --background: 30 8% 8%;
+    --foreground: 35 20% 90%;
+    --card: 30 8% 11%;
+    --card-foreground: 35 20% 90%;
+    --popover: 30 8% 11%;
+    --popover-foreground: 35 20% 90%;
+
+    --primary: 18 70% 52%;
+    --primary-foreground: 30 8% 8%;
+
+    --secondary: 30 8% 16%;
+    --secondary-foreground: 35 15% 85%;
+
+    --muted: 30 6% 16%;
+    --muted-foreground: 35 10% 55%;
+
+    --accent: 90 10% 18%;
+    --accent-foreground: 90 15% 75%;
+
+    --destructive: 0 62% 35%;
     --destructive-foreground: 0 0% 98%;
-    --border: 240 3.7% 15.9%;
-    --input: 240 3.7% 15.9%;
-    --ring: 24 95% 53%;
-    --chart-1: 220 70% 50%;
-    --chart-2: 160 60% 45%;
-    --chart-3: 30 80% 55%;
-    --chart-4: 280 65% 60%;
-    --chart-5: 340 75% 55%;
+
+    --border: 30 6% 18%;
+    --input: 30 6% 18%;
+    --ring: 18 70% 52%;
+
+    --chart-1: 18 70% 52%;
+    --chart-2: 90 18% 55%;
+    --chart-3: 35 20% 55%;
+    --chart-4: 45 65% 60%;
+    --chart-5: 10 55% 60%;
+
+    --shadow-color: 30 10% 5%;
+    --washi-opacity: 0.015;
+    --noren-color: 18 70% 52%;
   }
 }
 
+/* ═══════════════════════════════════════════
+   Base styles
+   ═══════════════════════════════════════════ */
 @layer base {
   * {
     @apply border-border;
   }
+
   body {
     @apply bg-background text-foreground;
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
-      "Helvetica Neue", Arial, sans-serif;
+    font-family: var(--font-body);
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
+  }
+
+  h1, h2, h3, h4, h5, h6 {
+    font-family: var(--font-heading);
+    font-weight: 600;
+    letter-spacing: -0.01em;
+  }
+
+  ::selection {
+    background: hsl(var(--primary) / 0.15);
+    color: hsl(var(--foreground));
+  }
+
+  :focus-visible {
+    outline: 2px solid hsl(var(--ring));
+    outline-offset: 2px;
+  }
+
+  code, pre, kbd {
+    font-family: var(--font-mono);
   }
 }
 
-/* Additional utility classes for islands */
+/* ═══════════════════════════════════════════
+   Components
+   ═══════════════════════════════════════════ */
+@layer components {
+  /* Washi paper texture overlay */
+  .omakase-texture::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    z-index: 9999;
+    opacity: var(--washi-opacity);
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)'/%3E%3C/svg%3E");
+    background-repeat: repeat;
+    background-size: 256px 256px;
+  }
+
+  /* Noren divider — a soft horizontal rule inspired by noren curtains */
+  .noren-divider {
+    @apply relative my-8;
+    height: 1px;
+    background: linear-gradient(
+      90deg,
+      transparent,
+      hsl(var(--noren-color) / 0.25) 20%,
+      hsl(var(--noren-color) / 0.35) 50%,
+      hsl(var(--noren-color) / 0.25) 80%,
+      transparent
+    );
+  }
+
+  /* Bento card — soft warm card */
+  .card-bento {
+    @apply rounded-lg border bg-card p-6;
+    box-shadow:
+      0 1px 3px hsl(var(--shadow-color) / 0.06),
+      0 4px 12px hsl(var(--shadow-color) / 0.04);
+    transition: box-shadow var(--transition-normal) cubic-bezier(0.16, 1, 0.3, 1),
+                transform var(--transition-normal) cubic-bezier(0.16, 1, 0.3, 1);
+  }
+
+  .card-bento:hover {
+    box-shadow:
+      0 2px 6px hsl(var(--shadow-color) / 0.08),
+      0 8px 24px hsl(var(--shadow-color) / 0.06);
+    transform: translateY(-1px);
+  }
+
+  /* Kintsugi card — card with golden accent line */
+  .card-kintsugi {
+    @apply rounded-lg border bg-card p-6 relative overflow-hidden;
+    box-shadow:
+      0 1px 3px hsl(var(--shadow-color) / 0.06),
+      0 4px 12px hsl(var(--shadow-color) / 0.04);
+  }
+
+  .card-kintsugi::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 2px;
+    background: linear-gradient(
+      90deg,
+      transparent,
+      hsl(var(--primary) / 0.6) 30%,
+      hsl(var(--primary)) 50%,
+      hsl(var(--primary) / 0.6) 70%,
+      transparent
+    );
+  }
+
+  /* Button styles */
+  .btn-omakase {
+    @apply inline-flex items-center justify-center rounded-md text-sm font-medium;
+    @apply px-4 py-2;
+    font-family: var(--font-body);
+    font-weight: 500;
+    transition: all var(--transition-quick) cubic-bezier(0.16, 1, 0.3, 1);
+  }
+
+  .btn-omakase:active {
+    transform: scale(0.98);
+  }
+
+  /* Input styles */
+  .input-omakase {
+    @apply flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm;
+    font-family: var(--font-body);
+    transition: border-color var(--transition-quick), box-shadow var(--transition-quick);
+  }
+
+  .input-omakase:focus {
+    @apply border-primary ring-1 ring-primary/20;
+  }
+
+  /* Badge styles */
+  .badge-omakase {
+    @apply inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium;
+    font-family: var(--font-body);
+    letter-spacing: 0.02em;
+  }
+
+  /* Navigation */
+  .nav-omakase {
+    @apply border-b;
+    border-color: hsl(var(--border));
+    background: hsl(var(--background) / 0.85);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+  }
+
+  .nav-link-omakase {
+    @apply text-sm font-medium;
+    color: hsl(var(--muted-foreground));
+    transition: color var(--transition-quick);
+    position: relative;
+  }
+
+  .nav-link-omakase:hover {
+    color: hsl(var(--foreground));
+  }
+
+  .nav-link-omakase::after {
+    content: '';
+    position: absolute;
+    bottom: -2px;
+    left: 0;
+    right: 0;
+    height: 1.5px;
+    background: hsl(var(--primary));
+    transform: scaleX(0);
+    transition: transform var(--transition-normal) cubic-bezier(0.16, 1, 0.3, 1);
+  }
+
+  .nav-link-omakase:hover::after {
+    transform: scaleX(1);
+  }
+
+  /* Logo */
+  .logo-omakase {
+    font-family: var(--font-heading);
+    font-weight: 700;
+    font-size: 1.25rem;
+    letter-spacing: -0.02em;
+    color: hsl(var(--foreground));
+    transition: color var(--transition-quick);
+  }
+
+  .logo-omakase:hover {
+    color: hsl(var(--primary));
+  }
+
+  /* Dialog */
+  .dialog-omakase {
+    @apply rounded-lg border bg-card shadow-lg;
+    box-shadow:
+      0 4px 12px hsl(var(--shadow-color) / 0.08),
+      0 16px 40px hsl(var(--shadow-color) / 0.12);
+  }
+
+  /* Table */
+  .table-omakase {
+    @apply w-full text-sm;
+  }
+
+  .table-omakase th {
+    @apply text-left font-medium text-muted-foreground px-4 py-3;
+    font-family: var(--font-body);
+    font-size: 0.75rem;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+  }
+
+  .table-omakase td {
+    @apply px-4 py-3 border-t;
+  }
+
+  /* Section heading */
+  .section-heading {
+    font-family: var(--font-heading);
+    font-weight: 500;
+    letter-spacing: -0.01em;
+  }
+
+  /* Season indicator */
+  .season-mark {
+    position: fixed;
+    bottom: 1rem;
+    right: 1rem;
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    opacity: 0.4;
+    pointer-events: none;
+    z-index: 50;
+    transition: background-color var(--transition-slow);
+  }
+
+  .season-mark[data-season="haru"] {
+    background-color: hsl(330 50% 70%);
+  }
+
+  .season-mark[data-season="natsu"] {
+    background-color: hsl(150 40% 45%);
+  }
+
+  .season-mark[data-season="aki"] {
+    background-color: hsl(25 70% 50%);
+  }
+
+  .season-mark[data-season="fuyu"] {
+    background-color: hsl(210 15% 55%);
+  }
+
+  /* Theme toggle */
+  .theme-toggle {
+    @apply flex items-center gap-3 px-4 py-3 text-sm w-full transition-colors rounded-md;
+    cursor: pointer;
+  }
+
+  .theme-toggle:hover {
+    @apply bg-accent;
+  }
+}
+
+/* ═══════════════════════════════════════════
+   Utilities
+   ═══════════════════════════════════════════ */
 @layer utilities {
+  /* Entrance animations */
   .animate-in {
-    animation: animateIn 0.2s ease-out;
+    animation: omakaseIn 0.35s cubic-bezier(0.16, 1, 0.3, 1) both;
   }
 
   .animate-out {
-    animation: animateOut 0.2s ease-in;
+    animation: omakaseOut 0.25s cubic-bezier(0.7, 0, 0.84, 0) both;
   }
 
-  @keyframes animateIn {
+  .animate-slide-up {
+    animation: slideUp 0.4s cubic-bezier(0.16, 1, 0.3, 1) both;
+  }
+
+  .animate-fade-in {
+    animation: fadeIn 0.3s ease-out both;
+  }
+
+  .animate-shoji-open {
+    animation: shojiOpen 0.5s cubic-bezier(0.16, 1, 0.3, 1) both;
+  }
+
+  .animate-breathe {
+    animation: breathe 4s ease-in-out infinite;
+  }
+
+  /* Stagger children */
+  .stagger-children > * {
+    animation: slideUp 0.35s cubic-bezier(0.16, 1, 0.3, 1) both;
+  }
+
+  .stagger-children > *:nth-child(1) { animation-delay: 0ms; }
+  .stagger-children > *:nth-child(2) { animation-delay: 50ms; }
+  .stagger-children > *:nth-child(3) { animation-delay: 100ms; }
+  .stagger-children > *:nth-child(4) { animation-delay: 150ms; }
+  .stagger-children > *:nth-child(5) { animation-delay: 200ms; }
+  .stagger-children > *:nth-child(6) { animation-delay: 250ms; }
+  .stagger-children > *:nth-child(7) { animation-delay: 300ms; }
+  .stagger-children > *:nth-child(8) { animation-delay: 350ms; }
+
+  /* Hover lift */
+  .hover-lift {
+    transition: transform var(--transition-normal) cubic-bezier(0.16, 1, 0.3, 1),
+                box-shadow var(--transition-normal) cubic-bezier(0.16, 1, 0.3, 1);
+  }
+
+  .hover-lift:hover {
+    transform: translateY(-2px);
+    box-shadow:
+      0 4px 12px hsl(var(--shadow-color) / 0.08),
+      0 8px 24px hsl(var(--shadow-color) / 0.06);
+  }
+
+  /* Warm shadow utilities */
+  .shadow-warm-sm {
+    box-shadow: 0 1px 2px hsl(var(--shadow-color) / 0.06);
+  }
+
+  .shadow-warm-md {
+    box-shadow:
+      0 2px 4px hsl(var(--shadow-color) / 0.06),
+      0 4px 12px hsl(var(--shadow-color) / 0.04);
+  }
+
+  .shadow-warm-lg {
+    box-shadow:
+      0 4px 8px hsl(var(--shadow-color) / 0.06),
+      0 8px 24px hsl(var(--shadow-color) / 0.08),
+      0 16px 40px hsl(var(--shadow-color) / 0.04);
+  }
+
+  /* Transition presets */
+  .transition-omakase {
+    transition-timing-function: cubic-bezier(0.16, 1, 0.3, 1);
+    transition-duration: var(--transition-normal);
+  }
+
+  .transition-omakase-quick {
+    transition-timing-function: cubic-bezier(0.16, 1, 0.3, 1);
+    transition-duration: var(--transition-quick);
+  }
+
+  /* Keyframes */
+  @keyframes omakaseIn {
     from {
       opacity: 0;
-      transform: scale(0.95);
+      transform: scale(0.96) translateY(4px);
     }
     to {
       opacity: 1;
-      transform: scale(1);
+      transform: scale(1) translateY(0);
     }
   }
 
-  @keyframes animateOut {
+  @keyframes omakaseOut {
     from {
       opacity: 1;
-      transform: scale(1);
+      transform: scale(1) translateY(0);
     }
     to {
       opacity: 0;
-      transform: scale(0.95);
+      transform: scale(0.96) translateY(4px);
     }
+  }
+
+  @keyframes slideUp {
+    from {
+      opacity: 0;
+      transform: translateY(12px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+
+  @keyframes fadeIn {
+    from { opacity: 0; }
+    to { opacity: 1; }
+  }
+
+  @keyframes shojiOpen {
+    from {
+      opacity: 0;
+      transform: translateX(-8px);
+    }
+    to {
+      opacity: 1;
+      transform: translateX(0);
+    }
+  }
+
+  @keyframes breathe {
+    0%, 100% { opacity: 0.4; }
+    50% { opacity: 0.7; }
   }
 }
