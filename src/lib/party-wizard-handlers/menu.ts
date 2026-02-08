@@ -375,7 +375,10 @@ What else would you like to add, or are you ready to finalize the menu?`;
           const urls = incomingMessage.textContent.match(urlRegex);
 
           if (urls && urls.length > 0) {
-            const url = urls[0];
+            const url = urls[0].replace(/[)\]}>.,!?;]+$/g, "");
+            if (!url) {
+              return;
+            }
             console.log("[menu] URL detected - using direct extraction workflow:", url);
 
             // Check duplicates

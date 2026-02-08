@@ -20,9 +20,9 @@
     - Applies D1 migrations to production database before deploy.
 - `wrangler.toml`
   - Added `[env.staging]` with `APP_URL=https://staging.chefde.party`.
-  - Added explicit staging D1 binding placeholder.
+  - Added explicit staging D1 binding.
   - Added production `APP_URL=https://chefde.party`.
-  - Added explicit production D1 binding placeholder.
+  - Added explicit production D1 binding.
 
 ## One-time setup checklist
 
@@ -37,9 +37,9 @@
      - `wrangler d1 create chefdeparty-db-staging`
    - Ensure production DB exists:
      - `chefdeparty-db`
-   - Update `wrangler.toml` placeholders:
-     - `replace-with-staging-d1-database-id`
-     - `replace-with-production-d1-database-id`
+   - Confirm `wrangler.toml` D1 IDs match your Cloudflare account values for:
+     - `env.staging.d1_databases`
+     - `env.production.d1_databases`
 
 3. GitHub repository environments
    - Create environment `staging`.

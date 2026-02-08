@@ -10,8 +10,8 @@ directory = "./dist"
 # D1 Database
 [[d1_databases]]
 binding = "DB"
-database_name = "chefdeparty-db"
-database_id = "001567cf-2123-447d-b58b-36159f0d06f1"
+database_name = "chefdeparty-db-dev"
+database_id = "replace-with-dev-d1-database-id"
 migrations_dir = "drizzle/migrations"
 
 # Durable Objects for scheduled reminders
