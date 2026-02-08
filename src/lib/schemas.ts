@@ -146,12 +146,8 @@ export const updateTimelineTaskSchema = z.object({
 // ============================================
 
 export const inviteGuestsSchema = z.object({
-  emails: z.array(z.string().email()).optional(),
-  phones: z.array(z.string()).optional(), // Phone numbers to invite
-}).refine(
-  (data) => (data.emails && data.emails.length > 0) || (data.phones && data.phones.length > 0),
-  { message: "At least one email or phone is required" }
-);
+  emails: z.array(z.string().email()).min(1, "At least one email is required"),
+});
 
 export const rsvpResponseSchema = z.object({
   rsvpStatus: rsvpStatusSchema,

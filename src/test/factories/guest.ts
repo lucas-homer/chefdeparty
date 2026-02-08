@@ -37,6 +37,7 @@ export function createGuestFactory() {
               faker.number.int({ min: 1, max: 2 })
             )
           : null,
+        guestToken: faker.string.alphanumeric(12),
         createdAt: faker.date.past(),
         ...overrides,
       };
