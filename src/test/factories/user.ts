@@ -1,5 +1,5 @@
 import { faker } from "@faker-js/faker";
-import type { User, NewUser } from "../../../drizzle/schema";
+import type { NewUser } from "../../../drizzle/schema";
 
 /**
  * Creates a user factory with Faker.

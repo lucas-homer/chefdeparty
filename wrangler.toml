@@ -11,7 +11,7 @@ directory = "./dist"
 [[d1_databases]]
 binding = "DB"
 database_name = "chefdeparty-db"
-database_id = "placeholder-will-be-updated-after-creation"
+database_id = "001567cf-2123-447d-b58b-36159f0d06f1"
 migrations_dir = "drizzle/migrations"
 
 # Durable Objects for scheduled reminders
@@ -33,9 +33,44 @@ NODE_ENV = "development"
 # Production environment
 [env.production]
 name = "chefdeparty"
+routes = [
+  { pattern = "chefde.party/*", zone_name = "chefde.party" }
+]
 
 [env.production.vars]
 NODE_ENV = "production"
+APP_URL = "https://chefde.party"
+
+[[env.production.durable_objects.bindings]]
+name = "PARTY_REMINDER"
+class_name = "PartyReminder"
+
+[[env.production.d1_databases]]
+binding = "DB"
+database_name = "chefdeparty-db"
+database_id = "001567cf-2123-447d-b58b-36159f0d06f1"
+migrations_dir = "drizzle/migrations"
+
+# Staging environment
+[env.staging]
+name = "chefdeparty-staging"
+routes = [
+  { pattern = "staging.chefde.party/*", zone_name = "chefde.party" }
+]
+
+[env.staging.vars]
+NODE_ENV = "production"
+APP_URL = "https://staging.chefde.party"
+
+[[env.staging.durable_objects.bindings]]
+name = "PARTY_REMINDER"
+class_name = "PartyReminder"
+
+[[env.staging.d1_databases]]
+binding = "DB"
+database_name = "chefdeparty-db-staging"
+database_id = "136572e0-c5d6-4187-afb0-c3c8f5fc81aa"
+migrations_dir = "drizzle/migrations"
 
 # Build configuration for wrangler
 [build]

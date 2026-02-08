@@ -1,8 +1,6 @@
 import { Hono } from "hono";
-import { zValidator } from "@hono/zod-validator";
-import { eq, and, or } from "drizzle-orm";
+import { eq, and } from "drizzle-orm";
 import { parties, guests, contributionItems } from "../../../drizzle/schema";
-import { rsvpResponseSchema } from "../../lib/schemas";
 import { normalizePhone } from "../../lib/phone";
 import type { Env } from "../../index";
 import type { createDb } from "../../lib/db";

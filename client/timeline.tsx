@@ -48,7 +48,7 @@ function TimelineApp({ partyId, initialTasks }: TimelineAppProps) {
             prev.map((t) => (t.id === taskId ? { ...t, completed: !completed } : t))
           );
         }
-      } catch (error) {
+      } catch (_error) {
         // Revert on error
         setTasks((prev) =>
           prev.map((t) => (t.id === taskId ? { ...t, completed: !completed } : t))

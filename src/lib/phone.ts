@@ -2,7 +2,6 @@ import {
   parsePhoneNumber,
   isValidPhoneNumber,
   CountryCode,
-  PhoneNumber,
 } from "libphonenumber-js";
 
 /**

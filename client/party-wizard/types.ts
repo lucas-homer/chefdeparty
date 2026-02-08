@@ -1,5 +1,3 @@
-import type { UIMessage } from "ai";
-
 // Wizard steps
 export type WizardStep = "party-info" | "guests" | "menu" | "timeline";
 

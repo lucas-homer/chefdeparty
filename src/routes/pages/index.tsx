@@ -10,7 +10,6 @@ import {
   contributionItems,
   calendarConnections,
   inviteCodes,
-  inviteCodeUses,
   users,
 } from "../../../drizzle/schema";
 import { requireAuth, getUser } from "../../lib/hono-auth";
@@ -1213,7 +1212,6 @@ pageRoutes.get("/invite/g/:guestToken/thanks", async (c) => {
   // Get query params from RSVP
   const email = c.req.query("email") || "";
   const phone = c.req.query("phone") || "";
-  const name = c.req.query("name") || "";
 
   // Find the guest by token to get the party
   const [guest] = await db
@@ -1538,7 +1536,6 @@ pageRoutes.get("/invite/:token/thanks", async (c) => {
   // Get query params from RSVP
   const email = c.req.query("email") || "";
   const phone = c.req.query("phone") || "";
-  const name = c.req.query("name") || "";
 
   const [party] = await db
     .select({

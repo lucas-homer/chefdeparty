@@ -9,7 +9,7 @@
  */
 
 import { eq, and } from "drizzle-orm";
-import { wizardSessions, recipes, type SerializedUIMessage } from "../../../drizzle/schema";
+import { wizardSessions, type SerializedUIMessage } from "../../../drizzle/schema";
 import { serializeMenuPlan } from "../wizard-session-serialization";
 import { getWizardTools } from "../party-wizard-tools";
 import { getStepSystemPrompt } from "../party-wizard-prompts";
@@ -371,7 +371,7 @@ What else would you like to add, or are you ready to finalize the menu?`;
         // WORKFLOW: Direct URL-to-recipe extraction
         // ========================================
         if (!hasImage) {
-          const urlRegex = /https?:\/\/[^\s<>"{}|\\^`\[\]]+/gi;
+          const urlRegex = /https?:\/\/[^\s<>"{}|\\^`]+/gi;
           const urls = incomingMessage.textContent.match(urlRegex);
 
           if (urls && urls.length > 0) {

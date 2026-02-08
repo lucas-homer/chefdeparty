@@ -47,7 +47,7 @@ async function generateCode(formData: FormData) {
     } else {
       showMessage("error", data.error || "Failed to generate code");
     }
-  } catch (err) {
+  } catch (_err) {
     showMessage("error", "An error occurred. Please try again.");
   }
 }
@@ -69,7 +69,7 @@ async function deleteCode(codeId: string) {
       const data = await response.json();
       showMessage("error", data.error || "Failed to delete code");
     }
-  } catch (err) {
+  } catch (_err) {
     showMessage("error", "An error occurred. Please try again.");
   }
 }
@@ -89,7 +89,7 @@ async function copyCode(code: string) {
         btn.textContent = originalText;
       }, 2000);
     }
-  } catch (err) {
+  } catch (_err) {
     // Fallback
     const input = document.createElement("input");
     input.value = code;

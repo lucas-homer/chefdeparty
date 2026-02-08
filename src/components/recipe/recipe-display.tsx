@@ -25,7 +25,7 @@ import {
   Sparkles,
   FileText,
 } from "lucide-react";
-import type { Recipe, Ingredient, Instruction, DietaryTag } from "../../../drizzle/schema";
+import type { Recipe } from "../../../drizzle/schema";
 
 interface RecipeDisplayProps {
   recipe: Recipe;
@@ -45,7 +45,6 @@ const sourceLabels = {
 
 export function RecipeDisplay({
   recipe,
-  backLink,
   showEditButton = true,
 }: RecipeDisplayProps) {
   const source = recipe.sourceType

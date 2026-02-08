@@ -1,4 +1,4 @@
-import { Context, Next } from "hono";
+import { Context } from "hono";
 import { createMiddleware } from "hono/factory";
 import { Env } from "../../index";
 import { createDb, sessions, users } from "../db";

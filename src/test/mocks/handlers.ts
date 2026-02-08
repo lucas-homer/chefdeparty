@@ -97,7 +97,6 @@ export const handlers = [
   http.post(
     "https://generativelanguage.googleapis.com/v1beta/models/*",
     async ({ request }) => {
-      const url = new URL(request.url);
       const body = (await request.json()) as {
         contents?: Array<{ parts?: Array<{ text?: string }> }>;
       };

@@ -132,7 +132,7 @@ function PartyWizardChatInner({
     () =>
       new DefaultChatTransport({
         api: "/api/parties/wizard/chat",
-        prepareSendMessagesRequest: ({ messages: msgs, id }) => {
+        prepareSendMessagesRequest: ({ messages: msgs }) => {
           // Only send the latest message - server has the history
           const latestMessage = msgs[msgs.length - 1];
           // Get and clear the decision ref
@@ -1076,7 +1076,7 @@ function PartyWizardChatInner({
       case "guests":
         // Guest list is now shown in the sidebar
         return null;
-      case "menu":
+      case "menu": {
         const menuItems = [
           ...(session.menuPlan?.existingRecipes || []),
           ...(session.menuPlan?.newRecipes || []),
@@ -1097,6 +1097,7 @@ function PartyWizardChatInner({
             </ul>
           </div>
         );
+      }
       case "timeline":
         if (!session.timeline || session.timeline.length === 0) return null;
         return (

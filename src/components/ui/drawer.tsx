@@ -14,8 +14,6 @@ const Drawer = ({
 )
 Drawer.displayName = "Drawer"
 
-type DrawerDirection = "top" | "bottom" | "left" | "right"
-
 const DrawerTrigger = DrawerPrimitive.Trigger
 
 const DrawerPortal = DrawerPrimitive.Portal

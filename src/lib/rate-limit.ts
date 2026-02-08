@@ -1,4 +1,4 @@
-import { eq, and, gt, sql } from "drizzle-orm";
+import { sql } from "drizzle-orm";
 import type { DrizzleD1Database } from "drizzle-orm/d1";
 
 // Rate limit configuration
