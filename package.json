@@ -17,8 +17,8 @@
     "eval": "evalite",
     "eval:watch": "evalite watch",
     "db:generate": "drizzle-kit generate --config=drizzle.config.local.ts",
-    "db:migrate": "wrangler d1 migrations apply chefdeparty-db --local",
-    "db:migrate:prod": "wrangler d1 migrations apply chefdeparty-db --remote",
+    "db:migrate": "wrangler d1 migrations apply DB --local",
+    "db:migrate:prod": "wrangler d1 migrations apply DB --remote --env production",
     "db:studio": "drizzle-kit studio",
     "deploy": "pnpm build:client && wrangler deploy",
     "cf-typegen": "wrangler types"

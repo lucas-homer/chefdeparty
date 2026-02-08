@@ -93,7 +93,7 @@ jobs:
           EOF
 
       - name: Apply local D1 migrations
-        run: pnpm wrangler d1 migrations apply chefdeparty-db --local
+        run: pnpm wrangler d1 migrations apply DB --local
 
       - name: Start app
         run: |
@@ -213,7 +213,7 @@ jobs:
           done
 
       - name: Apply D1 migrations (staging)
-        run: pnpm wrangler d1 migrations apply chefdeparty-db-staging --env staging --remote
+        run: pnpm wrangler d1 migrations apply DB --env staging --remote
 
       - name: Deploy to staging
         run: pnpm wrangler deploy --env staging
@@ -302,7 +302,7 @@ jobs:
           done
 
       - name: Apply D1 migrations (production)
-        run: pnpm wrangler d1 migrations apply chefdeparty-db --env production --remote
+        run: pnpm wrangler d1 migrations apply DB --env production --remote
 
       - name: Deploy to production
         run: pnpm wrangler deploy --env production
