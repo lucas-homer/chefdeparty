@@ -23,6 +23,7 @@ import {
 import { aiRecipeExtractionSchema } from "../../lib/schemas";
 import {
   deserializeWizardSession,
+  serializeGuestList,
   serializeMenuPlan,
 } from "../../lib/wizard-session-serialization";
 import type { Env } from "../../index";
@@ -717,6 +718,67 @@ const partyWizardRoutes = new Hono<AppContext>()
         success: true,
         removedName,
         menuPlan,
+      });
+    }
+  )
+
+  // Direct API endpoint to remove a guest (bypasses AI for instant removal)
+  .delete(
+    "/guest",
+    zValidator(
+      "json",
+      z.object({
+        sessionId: z.string().uuid(),
+        index: z.number().int().min(0),
+      })
+    ),
+    async (c) => {
+      const user = await getUser(c);
+      if (!user?.id) return c.json({ error: "Unauthorized" }, 401);
+
+      const db = c.get("db");
+      const { sessionId, index } = c.req.valid("json");
+
+      // Fetch the session
+      const session = await db.query.wizardSessions.findFirst({
+        where: and(
+          eq(wizardSessions.id, sessionId),
+          eq(wizardSessions.userId, user.id)
+        ),
+      });
+
+      if (!session) {
+        return c.json({ error: "Session not found" }, 404);
+      }
+
+      // Deserialize the guest list
+      const deserialized = deserializeWizardSession(session);
+      const guestList = [...(deserialized.guestList || [])];
+
+      if (index < 0 || index >= guestList.length) {
+        return c.json({ error: "Invalid index" }, 400);
+      }
+
+      const removed = guestList.splice(index, 1)[0];
+      const removedName = removed.name || removed.email || removed.phone || "Guest";
+
+      // Persist the updated guest list
+      await db
+        .update(wizardSessions)
+        .set({
+          guestList: serializeGuestList(guestList),
+          updatedAt: new Date(),
+        })
+        .where(
+          and(
+            eq(wizardSessions.id, sessionId),
+            eq(wizardSessions.userId, user.id)
+          )
+        );
+
+      return c.json({
+        success: true,
+        removedName,
       });
     }
   );

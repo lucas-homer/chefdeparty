@@ -9,7 +9,8 @@ export { PartyWizardChat } from "./PartyWizardChat";
 export { WizardProgress } from "./WizardProgress";
 export { WizardCreating } from "./WizardCreating";
 export { RecipePicker } from "./RecipePicker";
-export { MenuSidebar } from "./MenuSidebar";
+export { WizardSidebar } from "./WizardSidebar";
+export { MobileSidebarTrigger, DesktopSidebarAside } from "./WizardSidebarContainer";
 export { useWizardState } from "./useWizardState";
 
 // Types

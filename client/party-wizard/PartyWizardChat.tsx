@@ -4,9 +4,11 @@ import { DefaultChatTransport, type UIMessage } from "ai";
 import { WizardProgress } from "./WizardProgress";
 import { WizardCreating } from "./WizardCreating";
 import { RecipePicker } from "./RecipePicker";
-import { MenuSidebar } from "./MenuSidebar";
 import { TimelinePreview } from "./TimelinePreview";
 import { useWizardState } from "./useWizardState";
+import { MobileSidebarTrigger, DesktopSidebarAside } from "./WizardSidebarContainer";
+import type { WizardSidebarItem } from "./WizardSidebar";
+import { BookOpen, Camera, Link, Sparkles, User, Users, UtensilsCrossed } from "lucide-react";
 import type {
   WizardStep,
   UserRecipe,
@@ -422,10 +424,115 @@ function PartyWizardChatInner({
     }
   }
 
+  // Handle removing a guest from the sidebar - calls API directly for instant removal
+  async function handleRemoveGuest(index: number) {
+    try {
+      const response = await fetch("/api/parties/wizard/guest", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          sessionId: session.id,
+          index,
+        }),
+      });
+
+      if (!response.ok) {
+        const data = await response.json();
+        throw new Error(data.error || "Failed to remove guest");
+      }
+
+      refreshSession();
+    } catch (err) {
+      console.error("[PartyWizardChat] Failed to remove guest:", err);
+      setError(err instanceof Error ? err.message : "Failed to remove guest");
+    }
+  }
+
   // Get selected recipe IDs for the picker
   const selectedRecipeIds = [
     ...(session.menuPlan?.existingRecipes?.map((r) => r.recipeId) || []),
   ];
+
+  // Build sidebar items + config for the current step
+  function getRecipeSourceIcon(sourceType?: string): React.ReactNode {
+    const cls = "w-4 h-4";
+    switch (sourceType) {
+      case "photo": return <Camera className={cls} />;
+      case "url": return <Link className={cls} />;
+      case "ai": return <Sparkles className={cls} />;
+      default: return <BookOpen className={cls} />;
+    }
+  }
+
+  function getSidebarConfig(): {
+    items: WizardSidebarItem[];
+    onRemove?: (id: string) => void;
+    title: string;
+    emptyMessage: string;
+    emptyHint?: string;
+    triggerIcon: React.ReactNode;
+    triggerLabel: string;
+    footer?: React.ReactNode;
+  } | null {
+    if (currentStep === "guests") {
+      const guestList = session.guestList || [];
+      return {
+        title: "Guests",
+        items: guestList.map((guest, i) => ({
+          id: String(i),
+          label: guest.name || "Guest",
+          sublabel: guest.email || guest.phone,
+          icon: <User className="w-4 h-4" />,
+        })),
+        onRemove: (id) => handleRemoveGuest(Number(id)),
+        emptyMessage: "No guests yet",
+        emptyHint: "Add guests with their email or phone number.",
+        triggerIcon: <Users className="w-4 h-4" />,
+        triggerLabel: "guests",
+      };
+    }
+
+    if (currentStep === "menu") {
+      const existingRecipes = session.menuPlan?.existingRecipes || [];
+      const newRecipes = session.menuPlan?.newRecipes || [];
+      const items: WizardSidebarItem[] = [
+        ...existingRecipes.map((recipe, i) => ({
+          id: `existing-${i}`,
+          label: recipe.name,
+          icon: <BookOpen className="w-4 h-4" />,
+        })),
+        ...newRecipes.map((recipe, i) => ({
+          id: `new-${i}`,
+          label: recipe.name,
+          icon: getRecipeSourceIcon(recipe.sourceType),
+        })),
+      ];
+      return {
+        title: "Menu",
+        items,
+        onRemove: (id) => {
+          const [type, indexStr] = id.split("-");
+          handleRemoveMenuItem(Number(indexStr), type === "new");
+        },
+        emptyMessage: "No recipes yet",
+        emptyHint: "Add recipes by pasting URLs, uploading photos, or describing dishes.",
+        triggerIcon: <UtensilsCrossed className="w-4 h-4" />,
+        triggerLabel: "recipes",
+        footer: items.length > 0 ? (
+          <div className="flex flex-wrap gap-x-3 gap-y-1">
+            <span className="flex items-center gap-1"><BookOpen className="w-3 h-3" /> library</span>
+            <span className="flex items-center gap-1"><Camera className="w-3 h-3" /> photo</span>
+            <span className="flex items-center gap-1"><Link className="w-3 h-3" /> URL</span>
+            <span className="flex items-center gap-1"><Sparkles className="w-3 h-3" /> AI</span>
+          </div>
+        ) : undefined,
+      };
+    }
+
+    return null;
+  }
+
+  const sidebarConfig = getSidebarConfig();
 
   // Render a message part
   function renderMessagePart(msg: UIMessage, part: UIMessage["parts"][0], index: number) {
@@ -733,7 +840,7 @@ function PartyWizardChatInner({
       {/* Main content area with optional sidebar */}
       <div className="flex flex-1 min-h-0">
         {/* Chat area */}
-        <div className={`flex flex-col ${currentStep === "menu" ? "flex-1 min-w-0" : "w-full"}`}>
+        <div className={`flex flex-col ${sidebarConfig ? "flex-1 min-w-0" : "w-full"}`}>
           {/* Messages area */}
           <div className="flex-1 overflow-y-auto p-4 space-y-4">
             {/* Welcome message for each step */}
@@ -813,6 +920,19 @@ function PartyWizardChatInner({
 
           {/* Input Area */}
           <div className="border-t p-4">
+            {/* Mobile sidebar trigger + drawer */}
+            {sidebarConfig && (
+              <MobileSidebarTrigger
+                title={sidebarConfig.title}
+                items={sidebarConfig.items}
+                onRemove={sidebarConfig.onRemove}
+                emptyMessage={sidebarConfig.emptyMessage}
+                emptyHint={sidebarConfig.emptyHint}
+                footer={sidebarConfig.footer}
+                triggerIcon={sidebarConfig.triggerIcon}
+                triggerLabel={sidebarConfig.triggerLabel}
+              />
+            )}
             <form onSubmit={handleFormSubmit} className="flex gap-2">
               {/* Image upload button for menu step */}
               {currentStep === "menu" && (
@@ -931,14 +1051,16 @@ function PartyWizardChatInner({
           </div>
         </div>
 
-        {/* Menu Sidebar - only shown on menu step, hidden on mobile */}
-        {currentStep === "menu" && (
-          <div className="hidden md:block w-64 flex-shrink-0">
-            <MenuSidebar
-              menuPlan={session.menuPlan}
-              onRemoveRecipe={handleRemoveMenuItem}
-            />
-          </div>
+        {/* Desktop sidebar - shown for steps with sidebar data */}
+        {sidebarConfig && (
+          <DesktopSidebarAside
+            title={sidebarConfig.title}
+            items={sidebarConfig.items}
+            onRemove={sidebarConfig.onRemove}
+            emptyMessage={sidebarConfig.emptyMessage}
+            emptyHint={sidebarConfig.emptyHint}
+            footer={sidebarConfig.footer}
+          />
         )}
       </div>
 
@@ -952,21 +1074,8 @@ function PartyWizardChatInner({
 
     switch (currentStep) {
       case "guests":
-        if (!session.guestList || session.guestList.length === 0) return null;
-        return (
-          <div className="bg-muted/30 p-3 rounded-lg">
-            <p className="text-sm font-medium mb-2">Current guest list:</p>
-            <ul className="space-y-1">
-              {session.guestList.map((guest, i) => (
-                <li key={i} className="text-sm flex items-center justify-between">
-                  <span>
-                    {guest.name || "Guest"} ({guest.email || guest.phone})
-                  </span>
-                </li>
-              ))}
-            </ul>
-          </div>
-        );
+        // Guest list is now shown in the sidebar
+        return null;
       case "menu":
         const menuItems = [
           ...(session.menuPlan?.existingRecipes || []),
