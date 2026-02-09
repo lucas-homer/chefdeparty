@@ -1,5 +1,7 @@
 import type { FC, ReactNode } from "react";
 
+type MainSpacing = "default" | "none";
+
 interface LayoutProps {
   title?: string;
   user?: {
@@ -9,7 +11,13 @@ interface LayoutProps {
     image: string | null;
   } | null;
   scripts?: string[];
+  mainSpacing?: MainSpacing;
   children?: ReactNode;
+}
+
+interface MainContainerProps {
+  children?: ReactNode;
+  spacing?: MainSpacing;
 }
 
 const darkModeScript = `(function(){var t=localStorage.getItem('theme');if(t==='dark'||(t!=='light'&&matchMedia('(prefers-color-scheme:dark)').matches))document.documentElement.classList.add('dark')})()`;
@@ -21,6 +29,7 @@ export const Layout: FC<LayoutProps> = ({
   user,
   children,
   scripts = [],
+  mainSpacing = "default",
 }) => {
   return (
     <html lang="en">
@@ -36,7 +45,7 @@ export const Layout: FC<LayoutProps> = ({
       </head>
       <body className="min-h-screen bg-background omakase-texture">
         {user && (
-          <header className="nav-omakase">
+          <header className="nav-omakase sticky top-0 z-50">
             <div className="container mx-auto px-4 py-4 flex items-center justify-between">
               <a href="/parties" className="logo-omakase">
                 ChefDeParty
@@ -76,7 +85,7 @@ export const Layout: FC<LayoutProps> = ({
             </div>
           </header>
         )}
-        <main className="container mx-auto px-4 py-8">{children}</main>
+        <MainContainer spacing={mainSpacing}>{children}</MainContainer>
         {scripts.map((src) => (
           <script key={src} type="module" src={src} />
         ))}
@@ -108,6 +117,19 @@ export const Layout: FC<LayoutProps> = ({
         )}
       </body>
     </html>
+  );
+};
+
+export const MainContainer: FC<MainContainerProps> = ({
+  children,
+  spacing = "default",
+}) => {
+  const spacingClass = spacing === "none" ? "" : "py-8";
+
+  return (
+    <main className={`container mx-auto px-4 ${spacingClass}`.trim()}>
+      {children}
+    </main>
   );
 };
 

@@ -43,11 +43,11 @@ function PartyWizardApp({ manualUrl = "/parties/new" }: PartyWizardAppProps) {
   }
 
   if (showChat) {
-    // Mobile: full bleed with negative margins to escape main padding, minus header height (~65px)
-    // Using 100dvh for better mobile browser support (accounts for browser UI)
-    // Desktop: contained with max-width and proper spacing
+    // Mobile: full bleed with negative margins to escape main padding, minus header height (~65px).
+    // Keep a fixed available height so only the messages pane scrolls while steps/composer stay pinned.
+    // Desktop: contained with max-width.
     return (
-      <div className="-mx-4 -my-8 h-[calc(100dvh-65px)] md:mx-0 md:my-0 md:max-w-5xl md:mx-auto md:h-[calc(100vh-10rem)] md:py-4">
+      <div className="-mx-4 -my-8 min-h-[calc(100dvh-65px)] md:mx-auto md:my-0 md:max-w-5xl md:min-h-[calc(100dvh-65px)] flex flex-col">
         <PartyWizardChat onComplete={handleComplete} onCancel={handleCancel} />
       </div>
     );

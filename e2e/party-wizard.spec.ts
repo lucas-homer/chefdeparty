@@ -47,6 +47,23 @@ test.describe("Party Wizard", () => {
     await expect(page.getByPlaceholder(/describe your party/i)).toBeVisible();
   });
 
+  test("should use textarea input and support Shift+Enter for multiline", async ({ page }) => {
+    // Click on chat option
+    await page.getByRole("button", { name: /let's chat/i }).click();
+
+    const chatInput = page.getByPlaceholder(/describe your party/i);
+    await expect(chatInput).toBeVisible();
+
+    // Chat input should be a textarea for multiline entry
+    await expect(chatInput).toHaveJSProperty("tagName", "TEXTAREA");
+
+    await chatInput.fill("First line");
+    await chatInput.press("Shift+Enter");
+    await chatInput.type("Second line");
+
+    await expect(chatInput).toHaveValue("First line\nSecond line");
+  });
+
   test("should show step progress indicator with all steps", async ({ page }) => {
     // Click on chat option
     await page.getByRole("button", { name: /let's chat/i }).click();

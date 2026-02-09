@@ -180,6 +180,7 @@ pageRoutes.get("/parties/new", requireAuth, async (c) => {
       title="New Party - ChefDeParty"
       user={user}
       scripts={["/assets/party-wizard.js"]}
+      mainSpacing="none"
     >
       <div id="party-wizard-root" data-manual-url="/parties/new?mode=manual" />
     </Layout>
