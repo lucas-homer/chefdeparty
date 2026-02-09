@@ -7,6 +7,7 @@ export default defineConfig({
   build: {
     outDir: "dist/assets",
     emptyOutDir: true,
+    manifest: true,
     rollupOptions: {
       input: {
         // Main entry with CSS
@@ -27,9 +28,9 @@ export default defineConfig({
         admin: path.resolve(__dirname, "client/admin.ts"),
       },
       output: {
-        entryFileNames: "[name].js",
+        entryFileNames: "[name]-[hash].js",
         chunkFileNames: "chunks/[name]-[hash].js",
-        assetFileNames: "[name].[ext]",
+        assetFileNames: "[name]-[hash][extname]",
       },
     },
     minify: "esbuild",

@@ -6,6 +6,7 @@ compatibility_flags = ["nodejs_compat"]
 # Static assets from Vite build (using Workers Assets)
 [assets]
 directory = "./dist"
+binding = "ASSETS"
 
 # D1 Database
 [[d1_databases]]

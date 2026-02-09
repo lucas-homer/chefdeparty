@@ -1,6 +1,16 @@
-import React, { useRef, useEffect, useState, useMemo, FormEvent, useCallback, startTransition } from "react";
+import React, {
+  useRef,
+  useEffect,
+  useState,
+  useMemo,
+  FormEvent,
+  KeyboardEvent,
+  useCallback,
+  startTransition,
+} from "react";
 import { useChat } from "@ai-sdk/react";
 import { DefaultChatTransport, type UIMessage } from "ai";
+import { Textarea } from "@/components/ui/textarea";
 import { WizardProgress } from "./WizardProgress";
 import { WizardCreating } from "./WizardCreating";
 import { RecipePicker } from "./RecipePicker";
@@ -102,7 +112,7 @@ function PartyWizardChatInner({
   const [error, setError] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const inputRef = useRef<HTMLInputElement>(null);
+  const inputRef = useRef<HTMLTextAreaElement>(null);
 
   const [input, setInput] = useState("");
   const [isGivingFeedback, setIsGivingFeedback] = useState(false);
@@ -357,6 +367,22 @@ function PartyWizardChatInner({
 
     if (isGivingFeedback && feedbackRequestId) {
       // Use the dedicated handler for revision feedback (cohort-002-project pattern)
+      handleSubmitRevisionFeedback(input);
+    } else {
+      sendMessage({ text: input });
+      setInput("");
+    }
+  }
+
+  function handleInputKeyDown(e: KeyboardEvent<HTMLTextAreaElement>) {
+    if (e.key !== "Enter" || e.shiftKey || e.nativeEvent.isComposing) {
+      return;
+    }
+
+    e.preventDefault();
+    if (!input.trim() || isLoading) return;
+
+    if (isGivingFeedback && feedbackRequestId) {
       handleSubmitRevisionFeedback(input);
     } else {
       sendMessage({ text: input });
@@ -827,9 +853,9 @@ function PartyWizardChatInner({
   }
 
   return (
-    <div className="flex flex-col h-full border-x border-b md:border md:rounded-lg overflow-hidden bg-background">
+    <div className="flex flex-1 min-h-0 flex-col bg-background">
       {/* Header with progress */}
-      <div className="flex items-center justify-center px-4 py-2 border-b">
+      <div className="sticky top-[65px] z-20 flex items-center justify-center px-4 py-2 bg-background/95 backdrop-blur">
         <WizardProgress
           currentStep={currentStep}
           onStepClick={handleStepClick}
@@ -842,7 +868,7 @@ function PartyWizardChatInner({
         {/* Chat area */}
         <div className={`flex flex-col ${sidebarConfig ? "flex-1 min-w-0" : "w-full"}`}>
           {/* Messages area */}
-          <div className="flex-1 overflow-y-auto p-4 space-y-4">
+          <div className="flex-1 p-4 pb-44 space-y-4">
             {/* Welcome message for each step */}
             {messages.length === 0 && (
               <div className="text-center text-muted-foreground py-8">
@@ -919,134 +945,139 @@ function PartyWizardChatInner({
           </div>
 
           {/* Input Area */}
-          <div className="border-t p-4">
-            {/* Mobile sidebar trigger + drawer */}
-            {sidebarConfig && (
-              <MobileSidebarTrigger
-                title={sidebarConfig.title}
-                items={sidebarConfig.items}
-                onRemove={sidebarConfig.onRemove}
-                emptyMessage={sidebarConfig.emptyMessage}
-                emptyHint={sidebarConfig.emptyHint}
-                footer={sidebarConfig.footer}
-                triggerIcon={sidebarConfig.triggerIcon}
-                triggerLabel={sidebarConfig.triggerLabel}
-              />
-            )}
-            <form onSubmit={handleFormSubmit} className="flex gap-2">
-              {/* Image upload button for menu step */}
-              {currentStep === "menu" && (
-                <>
-                  <input
-                    ref={fileInputRef}
-                    type="file"
-                    accept="image/*"
-                    onChange={handleImageUpload}
-                    className="hidden"
-                  />
+          <div className="sticky bottom-0 z-20 p-4 pt-3 bg-background/95 backdrop-blur">
+            <div className="rounded-2xl border border-border/80 bg-card/95 p-3 shadow-lg backdrop-blur-sm md:p-4">
+              {/* Mobile sidebar trigger + drawer */}
+              {sidebarConfig && (
+                <MobileSidebarTrigger
+                  title={sidebarConfig.title}
+                  items={sidebarConfig.items}
+                  onRemove={sidebarConfig.onRemove}
+                  emptyMessage={sidebarConfig.emptyMessage}
+                  emptyHint={sidebarConfig.emptyHint}
+                  footer={sidebarConfig.footer}
+                  triggerIcon={sidebarConfig.triggerIcon}
+                  triggerLabel={sidebarConfig.triggerLabel}
+                />
+              )}
+              <form onSubmit={handleFormSubmit} className="space-y-3">
+                <Textarea
+                  ref={inputRef}
+                  value={input}
+                  onChange={(e) => setInput(e.target.value)}
+                  onKeyDown={handleInputKeyDown}
+                  placeholder={
+                    isGivingFeedback
+                      ? "Describe what you'd like to change..."
+                      : getInputPlaceholder(currentStep)
+                  }
+                  className="min-h-[54px] max-h-48 resize-y border-primary/70 bg-background/90"
+                  disabled={isLoading}
+                  rows={2}
+                />
+
+                <div className="flex flex-wrap items-center gap-3">
+                  {/* Image upload button for menu step */}
+                  {currentStep === "menu" && (
+                    <>
+                      <input
+                        ref={fileInputRef}
+                        type="file"
+                        accept="image/*"
+                        onChange={handleImageUpload}
+                        className="hidden"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => fileInputRef.current?.click()}
+                        className="h-10 w-10 rounded-md border border-border/80 hover:bg-muted flex items-center justify-center"
+                        title="Upload recipe image"
+                      >
+                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            strokeWidth="2"
+                            d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"
+                          />
+                        </svg>
+                      </button>
+                    </>
+                  )}
+
                   <button
                     type="button"
-                    onClick={() => fileInputRef.current?.click()}
-                    className="px-3 py-2 border rounded-md hover:bg-muted flex items-center gap-1 text-sm"
-                    title="Upload recipe image"
+                    onClick={onCancel}
+                    className="text-sm text-muted-foreground hover:text-foreground"
                   >
-                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        strokeWidth="2"
-                        d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"
-                      />
-                    </svg>
+                    Cancel
                   </button>
-                </>
-              )}
+                  {currentStep !== "party-info" && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const currentIndex = WIZARD_STEPS.indexOf(currentStep);
+                        if (currentIndex > 0) {
+                          setStep(WIZARD_STEPS[currentIndex - 1]);
+                        }
+                      }}
+                      className="text-sm text-muted-foreground hover:text-foreground flex items-center gap-1"
+                    >
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          strokeWidth="2"
+                          d="M15 19l-7-7 7-7"
+                        />
+                      </svg>
+                      Back
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    onClick={startNewSession}
+                    className="text-sm text-muted-foreground hover:text-foreground"
+                  >
+                    Start Over
+                  </button>
 
-              <input
-                ref={inputRef}
-                value={input}
-                onChange={(e) => setInput(e.target.value)}
-                placeholder={
-                  isGivingFeedback
-                    ? "Describe what you'd like to change..."
-                    : getInputPlaceholder(currentStep)
-                }
-                className="flex-1 px-4 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-primary"
-                disabled={isLoading}
-              />
-              <button
-                type="submit"
-                disabled={isLoading || !input.trim()}
-                className="px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90 disabled:opacity-50 flex items-center gap-2"
-              >
-                {isLoading ? (
-                  <svg className="animate-spin h-5 w-5" viewBox="0 0 24 24">
-                    <circle
-                      className="opacity-25"
-                      cx="12"
-                      cy="12"
-                      r="10"
-                      stroke="currentColor"
-                      strokeWidth="4"
-                      fill="none"
-                    />
-                    <path
-                      className="opacity-75"
-                      fill="currentColor"
-                      d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-                    />
-                  </svg>
-                ) : (
-                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth="2"
-                      d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8"
-                    />
-                  </svg>
-                )}
-              </button>
-            </form>
-
-            {/* Cancel/Back/Start Over buttons - left aligned */}
-            <div className="flex justify-start items-center gap-4 mt-3">
-              <button
-                type="button"
-                onClick={onCancel}
-                className="text-sm text-muted-foreground hover:text-foreground"
-              >
-                Cancel
-              </button>
-              {currentStep !== "party-info" && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    const currentIndex = WIZARD_STEPS.indexOf(currentStep);
-                    if (currentIndex > 0) {
-                      setStep(WIZARD_STEPS[currentIndex - 1]);
-                    }
-                  }}
-                  className="text-sm text-muted-foreground hover:text-foreground flex items-center gap-1"
-                >
-                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth="2"
-                      d="M15 19l-7-7 7-7"
-                    />
-                  </svg>
-                  Back
-                </button>
-              )}
-              <button
-                type="button"
-                onClick={startNewSession}
-                className="text-sm text-muted-foreground hover:text-foreground"
-              >
-                Start Over
-              </button>
+                  <button
+                    type="submit"
+                    aria-label="Send message"
+                    disabled={isLoading || !input.trim()}
+                    className="ml-auto h-10 w-10 shrink-0 rounded-md bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50 flex items-center justify-center"
+                  >
+                    {isLoading ? (
+                      <svg className="animate-spin h-5 w-5" viewBox="0 0 24 24">
+                        <circle
+                          className="opacity-25"
+                          cx="12"
+                          cy="12"
+                          r="10"
+                          stroke="currentColor"
+                          strokeWidth="4"
+                          fill="none"
+                        />
+                        <path
+                          className="opacity-75"
+                          fill="currentColor"
+                          d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                        />
+                      </svg>
+                    ) : (
+                      <svg className="w-5 h-5 rotate-90" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          strokeWidth="2"
+                          d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8"
+                        />
+                      </svg>
+                    )}
+                  </button>
+                </div>
+              </form>
             </div>
           </div>
         </div>
