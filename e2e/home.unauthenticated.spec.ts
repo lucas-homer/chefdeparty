@@ -48,4 +48,15 @@ test.describe("Login Page (Unauthenticated)", () => {
       page.getByRole("button", { name: /have an invite code/i })
     ).toBeVisible();
   });
+
+  test("should render verify-request page without internal server error", async ({
+    page,
+  }) => {
+    const response = await page.goto(
+      "/api/auth/verify-request?provider=resend&type=email"
+    );
+
+    expect(response?.status()).toBe(200);
+    await expect(page.locator("body")).not.toContainText("Internal Server Error");
+  });
 });
