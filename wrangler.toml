@@ -59,7 +59,7 @@ class_name = "PartyReminder"
 [[env.production.d1_databases]]
 binding = "DB"
 database_name = "chefdeparty-db"
-database_id = "001567cf-2123-447d-b58b-36159f0d06f1"
+database_id = "ef6b9f5c-8aae-4c73-8b6d-751c3510d4e8"
 migrations_dir = "drizzle/migrations"
 
 # Staging environment
@@ -85,7 +85,7 @@ class_name = "PartyReminder"
 [[env.staging.d1_databases]]
 binding = "DB"
 database_name = "chefdeparty-db-staging"
-database_id = "136572e0-c5d6-4187-afb0-c3c8f5fc81aa"
+database_id = "ab7cbb0a-61c0-4d88-a2d3-ee07de0d28a7"
 migrations_dir = "drizzle/migrations"
 
 # Build configuration for wrangler
