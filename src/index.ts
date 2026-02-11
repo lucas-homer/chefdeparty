@@ -11,6 +11,7 @@ import {
 import { initAuthConfig, verifyAuth } from "@hono/auth-js";
 import { PartyReminder } from "./durable-objects/party-reminder";
 import { cleanupPendingInvites } from "./routes/api/invite-codes";
+import { rewriteHtmlResponse } from "./lib/rewrite-html-response";
 
 // Re-export Durable Object
 export { PartyReminder };
@@ -179,30 +180,12 @@ app.use("*", async (c, next) => {
   await next();
 
   if (!c.env.ASSETS) return;
-
   const contentType = c.res.headers.get("content-type") || "";
   if (!contentType.includes("text/html")) return;
 
   const replacementMap = await getAssetReplacementMap(c.env.ASSETS, c.req.url);
   if (!replacementMap || replacementMap.size === 0) return;
-
-  const originalHtml = await c.res.text();
-  let rewrittenHtml = originalHtml;
-
-  for (const [from, to] of replacementMap) {
-    rewrittenHtml = rewrittenHtml.replaceAll(from, to);
-  }
-
-  if (rewrittenHtml === originalHtml) return;
-
-  const headers = new Headers(c.res.headers);
-  headers.delete("content-length");
-
-  c.res = new Response(rewrittenHtml, {
-    status: c.res.status,
-    statusText: c.res.statusText,
-    headers,
-  });
+  c.res = await rewriteHtmlResponse(c.res, replacementMap);
 });
 
 // Add database to context
