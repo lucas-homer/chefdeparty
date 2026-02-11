@@ -13,6 +13,10 @@ import { sendOtpSchema, verifyOtpSchema } from "../../lib/schemas";
 import { normalizePhone } from "../../lib/phone";
 import { getTwilioConfig, sendOtp, verifyOtp } from "../../lib/sms";
 import { checkOtpRateLimit, getClientIp, resetRateLimit } from "../../lib/rate-limit";
+import {
+  createPhoneAuthPlaceholderEmail,
+  sanitizeAuthEmail,
+} from "../../lib/auth-email";
 import type { Env } from "../../index";
 import type { createDb } from "../../lib/db";
 
@@ -21,6 +25,11 @@ type Variables = {
 };
 
 type AppContext = { Bindings: Env; Variables: Variables };
+
+function isUsersEmailNotNullConstraintError(error: unknown): boolean {
+  if (!(error instanceof Error)) return false;
+  return /NOT NULL constraint failed/i.test(error.message);
+}
 
 const phoneAuthRoutes = new Hono<AppContext>()
   // POST /api/phone-auth/send-otp - Send OTP to phone number
@@ -209,14 +218,31 @@ const phoneAuthRoutes = new Hono<AppContext>()
         .from(pendingInvites)
         .where(eq(pendingInvites.phone, phone));
 
-      // Create new user
-      const [newUser] = await db
-        .insert(users)
-        .values({
-          phone,
-          phoneVerified: new Date(),
-        })
-        .returning();
+      // Create new user. Most environments allow nullable email, but if a
+      // database still has users.email as NOT NULL we retry with a placeholder.
+      let newUser: typeof users.$inferSelect;
+      try {
+        [newUser] = await db
+          .insert(users)
+          .values({
+            phone,
+            phoneVerified: new Date(),
+          })
+          .returning();
+      } catch (error) {
+        if (!isUsersEmailNotNullConstraintError(error)) {
+          throw error;
+        }
+
+        [newUser] = await db
+          .insert(users)
+          .values({
+            email: createPhoneAuthPlaceholderEmail(phone),
+            phone,
+            phoneVerified: new Date(),
+          })
+          .returning();
+      }
 
       user = newUser;
 
@@ -277,7 +303,7 @@ const phoneAuthRoutes = new Hono<AppContext>()
       user: {
         id: user.id,
         phone: user.phone,
-        email: user.email,
+        email: sanitizeAuthEmail(user.email),
         name: user.name,
       },
     });
