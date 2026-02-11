@@ -6,6 +6,7 @@ import { DrizzleAdapter } from "@auth/drizzle-adapter";
 import { eq } from "drizzle-orm";
 import { Resend } from "resend";
 import { createDb } from "./db";
+import { sanitizeAuthEmail } from "./auth-email";
 import {
   users,
   accounts,
@@ -265,7 +266,7 @@ export function getUser(c: Context<{ Bindings: Env }>): AuthUser | null {
   if (!auth?.session?.user) return null;
   return {
     id: auth.session.user.id,
-    email: auth.session.user.email || null,
+    email: sanitizeAuthEmail(auth.session.user.email),
     name: auth.session.user.name || null,
     image: auth.session.user.image || null,
   };
