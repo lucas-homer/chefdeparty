@@ -3,6 +3,11 @@ main = "src/index.ts"
 compatibility_date = "2024-12-30"
 compatibility_flags = ["nodejs_compat"]
 
+[observability]
+[observability.logs]
+enabled = false
+invocation_logs = true
+
 # Static assets from Vite build (using Workers Assets)
 [assets]
 directory = "./dist"
@@ -42,6 +47,11 @@ routes = [
 NODE_ENV = "production"
 APP_URL = "https://chefde.party"
 
+[env.production.observability.logs]
+enabled = true
+invocation_logs = true
+persist = true
+
 [[env.production.durable_objects.bindings]]
 name = "PARTY_REMINDER"
 class_name = "PartyReminder"
@@ -62,6 +72,11 @@ routes = [
 [env.staging.vars]
 NODE_ENV = "production"
 APP_URL = "https://staging.chefde.party"
+
+[env.staging.observability.logs]
+enabled = true
+invocation_logs = true
+persist = true
 
 [[env.staging.durable_objects.bindings]]
 name = "PARTY_REMINDER"
