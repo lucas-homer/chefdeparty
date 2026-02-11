@@ -1,10 +1,5 @@
 -- Make users.email nullable to support phone-only auth users
--- SQLite doesn't support ALTER COLUMN, so recreate the table.
---
--- NOTE: We intentionally do not flip foreign_keys back ON in this migration.
--- Production may contain legacy FK inconsistencies in unrelated tables; turning
--- checks back on inside this migration can fail with SQLITE_CONSTRAINT even
--- after users table recreation.
+-- SQLite doesn't support ALTER COLUMN, so recreate the table
 
 PRAGMA foreign_keys = OFF;
 --> statement-breakpoint
@@ -36,3 +31,6 @@ CREATE UNIQUE INDEX `users_email_unique` ON `users` (`email`);
 --> statement-breakpoint
 
 CREATE UNIQUE INDEX `users_phone_unique` ON `users` (`phone`);
+--> statement-breakpoint
+
+PRAGMA foreign_keys = ON;
