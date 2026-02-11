@@ -56,20 +56,37 @@ test.describe("Login Page - Phone Auth UI", () => {
     // Enter a phone number (use valid format: area code 415, exchange 555)
     // Phone input has placeholder +1 (555) 555-1234
     const phoneInput = page.locator('#signin-phone-tab').getByPlaceholder(/555.*1234/);
-    await phoneInput.fill("+1 415 555 1234");
+    await phoneInput.fill("1 415 555 1234");
 
-    // Verify input value
-    await expect(phoneInput).toHaveValue("+1 415 555 1234");
+    // Verify input value is normalized to +E.164-like digits
+    await expect(phoneInput).toHaveValue("+14155551234");
   });
 });
 
 test.describe("RSVP - Phone Number Support (Public)", () => {
+  test("should apply dark-aware classes to RSVP status select", async ({ page }) => {
+    await page.goto(`/invite/${testParties.upcoming.shareToken}`);
+
+    const select = page.locator('select[name="rsvpStatus"]');
+    await expect(select).toBeVisible();
+    await expect(select).toHaveClass(/\[color-scheme:light\]/);
+    await expect(select).toHaveClass(/dark:\[color-scheme:dark\]/);
+  });
+
   test("should display phone field on RSVP form", async ({ page }) => {
     await page.goto(`/invite/${testParties.upcoming.shareToken}`);
 
     // Should show phone input field with placeholder
     await expect(page.locator('input[name="phone"]')).toBeVisible();
     await expect(page.getByPlaceholder(/555.*1234/)).toBeVisible();
+  });
+
+  test("should auto-prefix plus sign for RSVP phone input", async ({ page }) => {
+    await page.goto(`/invite/${testParties.upcoming.shareToken}`);
+
+    const phoneInput = page.locator('input[name="phone"]');
+    await phoneInput.fill("4155551234");
+    await expect(phoneInput).toHaveValue("+4155551234");
   });
 
   test("should show helper text about email or phone", async ({ page }) => {

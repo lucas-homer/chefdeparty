@@ -2,6 +2,7 @@ import React, { useState, useCallback, useEffect, useRef, FormEvent, ChangeEvent
 import { createRoot } from "react-dom/client";
 import { hc } from "hono/client";
 import type { ApiRoutes } from "../src/routes/api";
+import { Input } from "@/components/ui/input";
 
 // Create typed client
 const client = hc<ApiRoutes>("/api");
@@ -132,11 +133,10 @@ function GuestForm({ partyId, onSuccess, onCancel }: GuestFormProps) {
 
       <div className="space-y-2">
         <label className="text-sm font-medium">Email *</label>
-        <input
+        <Input
           type="email"
           value={email}
           onChange={(e: ChangeEvent<HTMLInputElement>) => setEmail(e.target.value)}
-          className="w-full px-3 py-2 border rounded-md"
           placeholder="guest@example.com"
           required
           autoFocus
@@ -145,11 +145,10 @@ function GuestForm({ partyId, onSuccess, onCancel }: GuestFormProps) {
 
       <div className="space-y-2">
         <label className="text-sm font-medium">Name (optional)</label>
-        <input
+        <Input
           type="text"
           value={name}
           onChange={(e: ChangeEvent<HTMLInputElement>) => setName(e.target.value)}
-          className="w-full px-3 py-2 border rounded-md"
           placeholder="Guest name"
         />
       </div>

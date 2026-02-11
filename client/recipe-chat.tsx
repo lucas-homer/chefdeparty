@@ -2,6 +2,7 @@ import React, { useRef, useEffect, useState, FormEvent } from "react";
 import { createRoot } from "react-dom/client";
 import { useChat } from "@ai-sdk/react";
 import { DefaultChatTransport } from "ai";
+import { Input } from "@/components/ui/input";
 
 interface ToolResult {
   success: boolean;
@@ -128,11 +129,11 @@ function RecipeChat() {
 
       {/* Input Area */}
       <form onSubmit={handleFormSubmit} className="border-t p-4 flex gap-2">
-        <input
+        <Input
           value={input}
           onChange={(e) => setInput(e.target.value)}
           placeholder="Describe the recipe you want to create..."
-          className="flex-1 px-4 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-primary"
+          className="flex-1 h-10 px-4"
           disabled={isLoading}
         />
         <button

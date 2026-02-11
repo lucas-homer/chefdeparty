@@ -56,6 +56,24 @@ test.describe("Parties Page (Authenticated)", () => {
     // Should have date/time input
     await expect(page.locator('input[type="datetime-local"]')).toBeVisible();
   });
+
+  test("should render manual form inputs with tokenized form classes", async ({ page }) => {
+    await page.addInitScript(() => {
+      window.localStorage.setItem("theme", "dark");
+    });
+
+    await page.goto("/parties/new?mode=manual");
+    await expect(page.locator("html")).toHaveClass(/dark/);
+
+    const inputClassName = await page
+      .getByPlaceholder(/my dinner party/i)
+      .evaluate((element) => (element as HTMLInputElement).className);
+
+    expect(inputClassName).toContain("bg-background");
+    expect(inputClassName).toContain("text-foreground");
+    expect(inputClassName).toContain("border-input");
+    expect(inputClassName).toContain("placeholder:text-muted-foreground");
+  });
 });
 
 test.describe("Party Details (Authenticated)", () => {
