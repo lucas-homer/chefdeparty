@@ -17,6 +17,9 @@ import { isAdmin } from "../../lib/admin";
 import { Env } from "../../index";
 import { createDb } from "../../lib/db";
 import { Layout, PublicLayout } from "./layout";
+import { Input } from "../../components/ui/input";
+import { Textarea } from "../../components/ui/textarea";
+import { NativeSelect } from "../../components/ui/native-select";
 
 type Variables = {
   db: ReturnType<typeof createDb>;
@@ -31,6 +34,276 @@ pageRoutes.use(
     docType: true,
   })
 );
+
+// GET /login - Public auth page
+pageRoutes.get("/login", async (c) => {
+  const user = getUser(c);
+  if (user) {
+    return c.redirect("/parties");
+  }
+
+  const error = c.req.query("error");
+  const callbackUrl = c.req.query("callbackUrl") || "/parties";
+  let errorMessage = "";
+  let successMessage = "";
+
+  if (error === "InviteRequired") {
+    errorMessage = "An invite code is required to sign up. Please enter your invite code below.";
+  } else if (error === "InvalidInviteCode") {
+    errorMessage = "The invite code you entered is invalid.";
+  } else if (error === "InviteCodeExpired") {
+    errorMessage = "This invite code has expired.";
+  } else if (error === "InviteCodeUsed") {
+    errorMessage = "This invite code has already been used.";
+  } else if (error === "Verification") {
+    successMessage = "Check your email! We sent you a sign-in link.";
+  }
+
+  return c.render(
+    <PublicLayout title="Login - ChefDeParty" scripts={["/assets/login.js"]}>
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="w-full max-w-md p-8">
+          <div className="text-center mb-8">
+            <h1 className="text-3xl font-bold">ChefDeParty</h1>
+            <p className="text-muted-foreground mt-2">Plan your perfect dinner party</p>
+          </div>
+          <div className="border rounded-lg p-6 bg-card">
+            {errorMessage ? <div className="error-message">{errorMessage}</div> : null}
+            {successMessage ? <div className="info-message">{successMessage}</div> : null}
+
+            <div id="login-root" data-callback-url={callbackUrl}>
+              <div id="message" />
+
+              <div id="signin-view">
+                <h2 className="text-xl font-semibold mb-4">Sign in</h2>
+
+                <div className="tabs">
+                  <button type="button" className="tab active" data-tab="signin-email">
+                    Email
+                  </button>
+                  <button type="button" className="tab" data-tab="signin-phone">
+                    Phone
+                  </button>
+                </div>
+
+                <div id="signin-email-tab" className="tab-content active">
+                  <form id="email-form">
+                    <input type="hidden" name="csrfToken" id="csrf-token-email" value="" />
+                    <input type="hidden" name="callbackUrl" value={callbackUrl} />
+                    <p className="text-sm text-muted-foreground mb-3">
+                      Enter your email and we&apos;ll send you a magic link to sign in.
+                    </p>
+                    <Input
+                      type="email"
+                      id="email"
+                      name="email"
+                      placeholder="your@email.com"
+                      required
+                      autoComplete="email"
+                      className="mb-3"
+                    />
+                    <button type="submit" id="email-btn" className="w-full py-2 px-4 bg-primary text-primary-foreground rounded-md hover:bg-primary/90">
+                      Send Magic Link
+                    </button>
+                  </form>
+
+                  <div className="divider">
+                    <div className="divider-line" />
+                    <span className="divider-text">or</span>
+                    <div className="divider-line" />
+                  </div>
+
+                  <form id="google-form" action="/api/auth/signin/google" method="POST">
+                    <input type="hidden" name="csrfToken" id="csrf-token-google" value="" />
+                    <input type="hidden" name="callbackUrl" value={callbackUrl} />
+                    <button
+                      type="submit"
+                      className="w-full py-2 px-4 border rounded-md hover:bg-muted text-sm flex items-center justify-center gap-2"
+                    >
+                      <svg className="w-5 h-5" viewBox="0 0 24 24" fill="currentColor">
+                        <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4" />
+                        <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853" />
+                        <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" fill="#FBBC05" />
+                        <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335" />
+                      </svg>
+                      Continue with Google
+                    </button>
+                  </form>
+                </div>
+
+                <div id="signin-phone-tab" className="tab-content">
+                  <div id="phone-step-1">
+                    <p className="text-sm text-muted-foreground mb-3">
+                      Enter your phone number and we&apos;ll send you a verification code.
+                    </p>
+                    <Input
+                      type="tel"
+                      id="phone"
+                      placeholder="+1 (555) 555-1234"
+                      autoComplete="tel"
+                      className="mb-3"
+                    />
+                    <button type="button" id="send-otp-btn" className="w-full py-2 px-4 bg-primary text-primary-foreground rounded-md hover:bg-primary/90">
+                      Send Code
+                    </button>
+                  </div>
+
+                  <div id="phone-step-2" className="hidden">
+                    <p className="text-sm text-muted-foreground mb-3">
+                      Enter the 6-digit code we sent to <span id="phone-display" />
+                    </p>
+                    <Input
+                      type="text"
+                      id="otp-code"
+                      placeholder="000000"
+                      maxLength={6}
+                      inputMode="numeric"
+                      autoComplete="one-time-code"
+                      className="mb-3 text-center tracking-[0.5em] text-2xl"
+                    />
+                    <button type="button" id="verify-otp-btn" className="w-full py-2 px-4 bg-primary text-primary-foreground rounded-md hover:bg-primary/90">
+                      Verify Code
+                    </button>
+                    <p className="helper-text mt-4 text-center">
+                      <button type="button" id="back-phone-btn" className="link-btn">
+                        Use a different number
+                      </button>
+                      <span className="mx-2 text-border">|</span>
+                      <button type="button" className="link-btn" id="resend-btn">
+                        Resend code
+                      </button>
+                    </p>
+                  </div>
+                </div>
+
+                <div className="view-toggle">
+                  <button type="button" id="to-register-btn" className="link-btn">
+                    First time? I have an invite code &rarr;
+                  </button>
+                </div>
+              </div>
+
+              <div id="register-view" className="hidden">
+                <h2 className="text-xl font-semibold mb-4">Register</h2>
+                <p className="text-sm text-muted-foreground mb-4">
+                  Enter your invite code to create an account
+                </p>
+
+                <Input
+                  type="text"
+                  id="invite-code"
+                  placeholder="INVITE CODE"
+                  maxLength={8}
+                  autoComplete="off"
+                  className="mb-4 uppercase tracking-[0.1em]"
+                />
+
+                <div className="tabs">
+                  <button type="button" className="tab active" data-tab="register-email">
+                    Email
+                  </button>
+                  <button type="button" className="tab" data-tab="register-phone">
+                    Phone
+                  </button>
+                </div>
+
+                <div id="register-email-tab" className="tab-content active">
+                  <p className="helper-text mb-2">
+                    For Google sign-in, enter your Google account email and click &quot;Register with Google&quot; below.
+                  </p>
+                  <Input
+                    type="email"
+                    id="register-email"
+                    placeholder="your@email.com"
+                    autoComplete="email"
+                    className="mb-3"
+                  />
+                  <button type="button" id="register-email-btn" className="w-full py-2 px-4 bg-primary text-primary-foreground rounded-md hover:bg-primary/90">
+                    Register with Email
+                  </button>
+
+                  <div className="divider">
+                    <div className="divider-line" />
+                    <span className="divider-text">or</span>
+                    <div className="divider-line" />
+                  </div>
+
+                  <form id="google-register-form" action="/api/auth/signin/google" method="POST">
+                    <input type="hidden" name="csrfToken" id="csrf-token-google-register" value="" />
+                    <input type="hidden" name="callbackUrl" value={callbackUrl} />
+                    <button
+                      type="submit"
+                      className="w-full py-2 px-4 border rounded-md hover:bg-muted text-sm flex items-center justify-center gap-2"
+                    >
+                      <svg className="w-5 h-5" viewBox="0 0 24 24" fill="currentColor">
+                        <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4" />
+                        <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853" />
+                        <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" fill="#FBBC05" />
+                        <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335" />
+                      </svg>
+                      Register with Google
+                    </button>
+                  </form>
+                </div>
+
+                <div id="register-phone-tab" className="tab-content">
+                  <div id="register-phone-step-1">
+                    <p className="text-sm text-muted-foreground mb-3">
+                      Enter your phone number and we&apos;ll send you a verification code.
+                    </p>
+                    <Input
+                      type="tel"
+                      id="register-phone"
+                      placeholder="+1 (555) 555-1234"
+                      autoComplete="tel"
+                      className="mb-3"
+                    />
+                    <button type="button" id="register-send-otp-btn" className="w-full py-2 px-4 bg-primary text-primary-foreground rounded-md hover:bg-primary/90">
+                      Register with Phone
+                    </button>
+                  </div>
+
+                  <div id="register-phone-step-2" className="hidden">
+                    <p className="text-sm text-muted-foreground mb-3">
+                      Enter the 6-digit code we sent to <span id="register-phone-display" />
+                    </p>
+                    <Input
+                      type="text"
+                      id="register-otp-code"
+                      placeholder="000000"
+                      maxLength={6}
+                      inputMode="numeric"
+                      autoComplete="one-time-code"
+                      className="mb-3 text-center tracking-[0.5em] text-2xl"
+                    />
+                    <button type="button" id="register-verify-otp-btn" className="w-full py-2 px-4 bg-primary text-primary-foreground rounded-md hover:bg-primary/90">
+                      Verify Code
+                    </button>
+                    <p className="helper-text mt-4 text-center">
+                      <button type="button" id="back-register-phone-btn" className="link-btn">
+                        Use a different number
+                      </button>
+                      <span className="mx-2 text-border">|</span>
+                      <button type="button" className="link-btn" id="resend-register-btn">
+                        Resend code
+                      </button>
+                    </p>
+                  </div>
+                </div>
+
+                <div className="view-toggle">
+                  <button type="button" id="to-signin-btn" className="link-btn">
+                    &larr; Already have an account? Sign in
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </PublicLayout>
+  );
+});
 
 // ==================== PARTIES PAGES ====================
 
@@ -123,37 +396,34 @@ pageRoutes.get("/parties/new", requireAuth, async (c) => {
           <form action="/api/parties" method="POST" className="space-y-4">
             <div>
               <label className="block text-sm font-medium mb-1">Party Name</label>
-              <input
+              <Input
                 type="text"
                 name="name"
                 required
-                className="w-full px-3 py-2 border rounded-md"
                 placeholder="My Dinner Party"
               />
             </div>
             <div>
               <label className="block text-sm font-medium mb-1">Date & Time</label>
-              <input
+              <Input
                 type="datetime-local"
                 name="dateTime"
                 required
-                className="w-full px-3 py-2 border rounded-md"
               />
             </div>
             <div>
               <label className="block text-sm font-medium mb-1">Location</label>
-              <input
+              <Input
                 type="text"
                 name="location"
-                className="w-full px-3 py-2 border rounded-md"
                 placeholder="123 Main St"
               />
             </div>
             <div>
               <label className="block text-sm font-medium mb-1">Description</label>
-              <textarea
+              <Textarea
                 name="description"
-                className="w-full px-3 py-2 border rounded-md min-h-[100px]"
+                className="min-h-[100px]"
                 placeholder="What's the occasion?"
               />
             </div>
@@ -467,17 +737,17 @@ pageRoutes.get("/parties/:id/menu", requireAuth, async (c) => {
       <div className="border rounded-lg p-4 mb-6">
         <h3 className="font-medium mb-3">Add Recipe to Menu</h3>
         <form action={`/api/parties/${partyId}/menu`} method="POST" className="flex gap-4">
-          <select name="recipeId" className="flex-1 border rounded-md px-3 py-2">
+          <NativeSelect name="recipeId" className="flex-1">
             <option value="">Select a recipe...</option>
             {userRecipes.map((recipe) => (
               <option key={recipe.id} value={recipe.id}>{recipe.name}</option>
             ))}
-          </select>
-          <input
+          </NativeSelect>
+          <Input
             type="number"
             name="servings"
             placeholder="Servings"
-            className="w-24 border rounded-md px-3 py-2"
+            className="w-24"
             min="1"
           />
           <button type="submit" className="px-4 py-2 bg-primary text-primary-foreground rounded-md">
@@ -561,11 +831,11 @@ pageRoutes.get("/parties/:id/contributions", requireAuth, async (c) => {
       <div className="border rounded-lg p-4 mb-6">
         <h3 className="font-medium mb-3">Add Item for Guests to Bring</h3>
         <form action={`/api/parties/${partyId}/contributions`} method="POST" className="flex gap-4">
-          <input
+          <Input
             type="text"
             name="name"
             placeholder="Item name (e.g., 'Bottle of wine')"
-            className="flex-1 border rounded-md px-3 py-2"
+            className="flex-1"
             required
           />
           <button type="submit" className="px-4 py-2 bg-primary text-primary-foreground rounded-md">
@@ -1104,30 +1374,27 @@ pageRoutes.get("/invite/g/:guestToken", async (c) => {
           <form action={`/api/invite/g/${guestToken}`} method="POST" className="space-y-4">
             <div>
               <label className="block text-sm font-medium mb-1">Your Name *</label>
-              <input
+              <Input
                 type="text"
                 name="name"
                 required
                 defaultValue={guest.name || ""}
-                className="w-full px-3 py-2 border rounded-md"
               />
             </div>
             <div>
               <label className="block text-sm font-medium mb-1">Your Email</label>
-              <input
+              <Input
                 type="email"
                 name="email"
-                className="w-full px-3 py-2 border rounded-md"
                 placeholder="your@email.com"
                 defaultValue={guest.email || ""}
               />
             </div>
             <div>
               <label className="block text-sm font-medium mb-1">Your Phone</label>
-              <input
+              <Input
                 type="tel"
                 name="phone"
-                className="w-full px-3 py-2 border rounded-md"
                 placeholder="+1 (555) 555-1234"
                 defaultValue={guest.phone || ""}
               />
@@ -1137,32 +1404,30 @@ pageRoutes.get("/invite/g/:guestToken", async (c) => {
             </div>
             <div>
               <label className="block text-sm font-medium mb-1">Will you attend? *</label>
-              <select name="rsvpStatus" required className="w-full px-3 py-2 border rounded-md">
+              <NativeSelect name="rsvpStatus" required>
                 <option value="">Select...</option>
                 <option value="yes">Yes, I'll be there!</option>
                 <option value="maybe">Maybe</option>
                 <option value="no">Sorry, can't make it</option>
-              </select>
+              </NativeSelect>
             </div>
             <div>
               <label className="block text-sm font-medium mb-1">How many people?</label>
-              <input
+              <Input
                 type="number"
                 name="headcount"
                 min="1"
                 max="10"
                 defaultValue={guest.headcount || 1}
-                className="w-full px-3 py-2 border rounded-md"
               />
             </div>
             <div>
               <label className="block text-sm font-medium mb-1">Dietary Restrictions</label>
-              <input
+              <Input
                 type="text"
                 name="dietaryRestrictions"
                 placeholder="e.g., vegetarian, gluten-free"
                 defaultValue={guest.dietaryRestrictions ? (guest.dietaryRestrictions as string[]).join(", ") : ""}
-                className="w-full px-3 py-2 border rounded-md"
               />
             </div>
 
@@ -1179,7 +1444,7 @@ pageRoutes.get("/invite/g/:guestToken", async (c) => {
                         name="claimContributionIds"
                         value={item.id}
                         disabled={!!item.claimedByGuestId}
-                        className="rounded"
+                        className="h-4 w-4 rounded border-input bg-background accent-primary"
                       />
                       <span className={item.claimedByGuestId ? "text-muted-foreground" : ""}>
                         {item.description}
@@ -1279,12 +1544,12 @@ pageRoutes.get("/invite/g/:guestToken/thanks", async (c) => {
                 <h3 className="text-sm font-medium mb-2">Sign up with Email</h3>
                 <form action="/api/auth/signin/email" method="POST">
                   <input type="hidden" name="csrfToken" value="" id="csrf-token-email" />
-                  <input
+                  <Input
                     type="email"
                     name="email"
                     defaultValue={email}
                     placeholder="your@email.com"
-                    className="w-full px-3 py-2 border rounded-md mb-2"
+                    className="mb-2"
                     required
                   />
                   <button
@@ -1300,12 +1565,12 @@ pageRoutes.get("/invite/g/:guestToken/thanks", async (c) => {
               <div className="border rounded-lg p-4">
                 <h3 className="text-sm font-medium mb-2">Sign up with Phone</h3>
                 <form action="/api/phone-auth/send-otp" method="POST" id="phone-signup-form">
-                  <input
+                  <Input
                     type="tel"
                     name="phone"
                     defaultValue={phone}
                     placeholder="+1 (555) 555-1234"
-                    className="w-full px-3 py-2 border rounded-md mb-2"
+                    className="mb-2"
                     required
                   />
                   <button
@@ -1432,28 +1697,25 @@ pageRoutes.get("/invite/:token", async (c) => {
           <form action={`/api/invite/${token}`} method="POST" className="space-y-4">
             <div>
               <label className="block text-sm font-medium mb-1">Your Name *</label>
-              <input
+              <Input
                 type="text"
                 name="name"
                 required
-                className="w-full px-3 py-2 border rounded-md"
               />
             </div>
             <div>
               <label className="block text-sm font-medium mb-1">Your Email</label>
-              <input
+              <Input
                 type="email"
                 name="email"
-                className="w-full px-3 py-2 border rounded-md"
                 placeholder="your@email.com"
               />
             </div>
             <div>
               <label className="block text-sm font-medium mb-1">Your Phone</label>
-              <input
+              <Input
                 type="tel"
                 name="phone"
-                className="w-full px-3 py-2 border rounded-md"
                 placeholder="+1 (555) 555-1234"
               />
               <p className="text-xs text-muted-foreground mt-1">
@@ -1462,31 +1724,29 @@ pageRoutes.get("/invite/:token", async (c) => {
             </div>
             <div>
               <label className="block text-sm font-medium mb-1">Will you attend? *</label>
-              <select name="rsvpStatus" required className="w-full px-3 py-2 border rounded-md">
+              <NativeSelect name="rsvpStatus" required>
                 <option value="">Select...</option>
                 <option value="yes">Yes, I'll be there!</option>
                 <option value="maybe">Maybe</option>
                 <option value="no">Sorry, can't make it</option>
-              </select>
+              </NativeSelect>
             </div>
             <div>
               <label className="block text-sm font-medium mb-1">How many people?</label>
-              <input
+              <Input
                 type="number"
                 name="headcount"
                 min="1"
                 max="10"
                 defaultValue="1"
-                className="w-full px-3 py-2 border rounded-md"
               />
             </div>
             <div>
               <label className="block text-sm font-medium mb-1">Dietary Restrictions</label>
-              <input
+              <Input
                 type="text"
                 name="dietaryRestrictions"
                 placeholder="e.g., vegetarian, gluten-free"
-                className="w-full px-3 py-2 border rounded-md"
               />
             </div>
 
@@ -1503,7 +1763,7 @@ pageRoutes.get("/invite/:token", async (c) => {
                         name="claimContributionIds"
                         value={item.id}
                         disabled={!!item.claimedByGuestId}
-                        className="rounded"
+                        className="h-4 w-4 rounded border-input bg-background accent-primary"
                       />
                       <span className={item.claimedByGuestId ? "text-muted-foreground" : ""}>
                         {item.description}
@@ -1594,12 +1854,12 @@ pageRoutes.get("/invite/:token/thanks", async (c) => {
                 <h3 className="text-sm font-medium mb-2">Sign up with Email</h3>
                 <form action="/api/auth/signin/email" method="POST">
                   <input type="hidden" name="csrfToken" value="" id="csrf-token-email" />
-                  <input
+                  <Input
                     type="email"
                     name="email"
                     defaultValue={email}
                     placeholder="your@email.com"
-                    className="w-full px-3 py-2 border rounded-md mb-2"
+                    className="mb-2"
                     required
                   />
                   <button
@@ -1615,12 +1875,12 @@ pageRoutes.get("/invite/:token/thanks", async (c) => {
               <div className="border rounded-lg p-4">
                 <h3 className="text-sm font-medium mb-2">Sign up with Phone</h3>
                 <form action="/api/phone-auth/send-otp" method="POST" id="phone-signup-form">
-                  <input
+                  <Input
                     type="tel"
                     name="phone"
                     defaultValue={phone}
                     placeholder="+1 (555) 555-1234"
-                    className="w-full px-3 py-2 border rounded-md mb-2"
+                    className="mb-2"
                     required
                   />
                   <button
@@ -1820,30 +2080,27 @@ pageRoutes.get("/admin", requireAuth, async (c) => {
           <form id="generate-form" className="space-y-4">
             <div>
               <label className="block text-sm font-medium mb-1">Max Uses</label>
-              <input
+              <Input
                 type="number"
                 name="maxUses"
                 defaultValue="1"
                 min="1"
-                className="w-full px-3 py-2 border rounded-md"
               />
               <p className="text-xs text-muted-foreground mt-1">How many times can this code be used?</p>
             </div>
             <div>
               <label className="block text-sm font-medium mb-1">Note (optional)</label>
-              <input
+              <Input
                 type="text"
                 name="note"
                 placeholder="e.g., For John"
-                className="w-full px-3 py-2 border rounded-md"
               />
             </div>
             <div>
               <label className="block text-sm font-medium mb-1">Expires (optional)</label>
-              <input
+              <Input
                 type="datetime-local"
                 name="expiresAt"
-                className="w-full px-3 py-2 border rounded-md"
               />
             </div>
             <div className="flex gap-3">

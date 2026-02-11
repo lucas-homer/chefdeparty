@@ -1,5 +1,6 @@
 import React, { useState, useCallback, MouseEvent } from "react";
 import { createRoot } from "react-dom/client";
+import { Input } from "@/components/ui/input";
 
 interface ShareLinkCardProps {
   shareUrl: string;
@@ -39,11 +40,11 @@ function ShareLinkCard({ shareUrl, title = "Share Link", description }: ShareLin
         <p className="text-sm text-muted-foreground mb-3">{description}</p>
       )}
       <div className="flex gap-2">
-        <input
+        <Input
           type="text"
           value={shareUrl}
           readOnly
-          className="flex-1 px-3 py-2 border rounded-md bg-muted text-sm"
+          className="flex-1 h-10 bg-muted text-sm"
           onClick={handleInputClick}
         />
         <button

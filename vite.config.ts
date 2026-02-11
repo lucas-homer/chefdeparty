@@ -26,6 +26,8 @@ export default defineConfig({
         "user-menu": path.resolve(__dirname, "client/user-menu.tsx"),
         // Admin components
         admin: path.resolve(__dirname, "client/admin.ts"),
+        // Login page auth flows
+        login: path.resolve(__dirname, "client/login.ts"),
       },
       output: {
         entryFileNames: "[name]-[hash].js",

@@ -2,6 +2,7 @@ import React, { useState, FormEvent, ChangeEvent, useRef } from "react";
 import { createRoot } from "react-dom/client";
 import { hc } from "hono/client";
 import type { ApiRoutes } from "../src/routes/api";
+import { Input } from "@/components/ui/input";
 
 // Create typed client
 const client = hc<ApiRoutes>("/api");
@@ -94,12 +95,11 @@ function ImportFromUrlDialog() {
             <form onSubmit={handleSubmit} className="space-y-4">
               <div className="space-y-2">
                 <label className="text-sm font-medium">Recipe URL</label>
-                <input
+                <Input
                   type="url"
                   value={url}
                   onChange={(e: ChangeEvent<HTMLInputElement>) => setUrl(e.target.value)}
                   placeholder="https://example.com/recipe"
-                  className="w-full px-3 py-2 border rounded-md"
                   required
                   disabled={loading}
                   autoFocus

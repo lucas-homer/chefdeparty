@@ -1,5 +1,7 @@
 import React, { useState, useEffect } from "react";
 import type { UserRecipe } from "./types";
+import { Input } from "@/components/ui/input";
+import { InputGroup, InputGroupAddon } from "@/components/ui/input-group";
 
 interface RecipePickerProps {
   onSelectRecipe: (recipe: UserRecipe) => void;
@@ -111,26 +113,30 @@ export function RecipePicker({ onSelectRecipe, selectedRecipeIds = [] }: RecipeP
         <div className="p-3 border-t">
           {/* Search */}
           <div className="relative mb-3">
-            <svg
-              className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground"
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth="2"
-                d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
+            <InputGroup>
+              <InputGroupAddon className="px-2.5">
+                <svg
+                  className="w-4 h-4 text-muted-foreground"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth="2"
+                    d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
+                  />
+                </svg>
+              </InputGroupAddon>
+              <Input
+                type="text"
+                placeholder="Search recipes..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="h-9 border-0 shadow-none focus-visible:ring-0 focus-visible:ring-offset-0"
               />
-            </svg>
-            <input
-              type="text"
-              placeholder="Search recipes..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full pl-9 pr-4 py-2 text-sm border rounded-md focus:outline-none focus:ring-2 focus:ring-primary"
-            />
+            </InputGroup>
           </div>
 
           {/* Recipe grid */}

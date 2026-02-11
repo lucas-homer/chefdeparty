@@ -3,6 +3,8 @@ import { createRoot } from "react-dom/client";
 import { hc } from "hono/client";
 import type { ApiRoutes } from "../src/routes/api";
 import { Button, IconButton } from "./components";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 
 // Create typed client
 const client = hc<ApiRoutes>("/api");
@@ -141,21 +143,20 @@ function RecipeForm({ recipeId, initialData }: RecipeFormProps) {
 
       <div className="space-y-2">
         <label className="text-sm font-medium">Recipe Name</label>
-        <input
+        <Input
           type="text"
           value={name}
           onChange={(e: ChangeEvent<HTMLInputElement>) => setName(e.target.value)}
-          className="w-full px-3 py-2 border rounded-md"
           required
         />
       </div>
 
       <div className="space-y-2">
         <label className="text-sm font-medium">Description</label>
-        <textarea
+        <Textarea
           value={description}
           onChange={(e: ChangeEvent<HTMLTextAreaElement>) => setDescription(e.target.value)}
-          className="w-full px-3 py-2 border rounded-md min-h-[100px]"
+          className="min-h-[100px]"
         />
       </div>
 
@@ -173,32 +174,32 @@ function RecipeForm({ recipeId, initialData }: RecipeFormProps) {
         </div>
         {ingredients.map((ing, index) => (
           <div key={index} className="flex gap-2 items-center">
-            <input
+            <Input
               type="text"
               placeholder="Amt"
               value={ing.amount || ""}
               onChange={(e: ChangeEvent<HTMLInputElement>) =>
                 updateIngredient(index, "amount", e.target.value)
               }
-              className="w-14 px-2 py-1.5 border rounded-md text-sm"
+              className="h-8 w-14 px-2 py-1.5 text-sm"
             />
-            <input
+            <Input
               type="text"
               placeholder="Unit"
               value={ing.unit || ""}
               onChange={(e: ChangeEvent<HTMLInputElement>) =>
                 updateIngredient(index, "unit", e.target.value)
               }
-              className="w-14 px-2 py-1.5 border rounded-md text-sm"
+              className="h-8 w-14 px-2 py-1.5 text-sm"
             />
-            <input
+            <Input
               type="text"
               placeholder="Ingredient"
               value={ing.ingredient}
               onChange={(e: ChangeEvent<HTMLInputElement>) =>
                 updateIngredient(index, "ingredient", e.target.value)
               }
-              className="flex-1 min-w-0 px-2 py-1.5 border rounded-md text-sm"
+              className="h-8 flex-1 min-w-0 px-2 py-1.5 text-sm"
               required
             />
             <IconButton
@@ -232,13 +233,13 @@ function RecipeForm({ recipeId, initialData }: RecipeFormProps) {
             <span className="w-6 h-6 flex items-center justify-center bg-muted rounded-full text-xs font-medium flex-shrink-0">
               {inst.step}
             </span>
-            <textarea
+            <Textarea
               placeholder={`Step ${inst.step}`}
               value={inst.description}
               onChange={(e: ChangeEvent<HTMLTextAreaElement>) =>
                 updateInstruction(index, e.target.value)
               }
-              className="flex-1 min-w-0 px-2 py-1.5 border rounded-md text-sm min-h-[60px]"
+              className="flex-1 min-w-0 px-2 py-1.5 text-sm min-h-[60px]"
               required
             />
             <IconButton
@@ -258,31 +259,28 @@ function RecipeForm({ recipeId, initialData }: RecipeFormProps) {
       <div className="grid grid-cols-3 gap-4">
         <div className="space-y-2">
           <label className="text-sm font-medium">Prep (min)</label>
-          <input
+          <Input
             type="number"
             value={prepTime}
             onChange={(e: ChangeEvent<HTMLInputElement>) => setPrepTime(parseInt(e.target.value) || 0)}
-            className="w-full px-3 py-2 border rounded-md"
             min="0"
           />
         </div>
         <div className="space-y-2">
           <label className="text-sm font-medium">Cook (min)</label>
-          <input
+          <Input
             type="number"
             value={cookTime}
             onChange={(e: ChangeEvent<HTMLInputElement>) => setCookTime(parseInt(e.target.value) || 0)}
-            className="w-full px-3 py-2 border rounded-md"
             min="0"
           />
         </div>
         <div className="space-y-2">
           <label className="text-sm font-medium">Servings</label>
-          <input
+          <Input
             type="number"
             value={servings}
             onChange={(e: ChangeEvent<HTMLInputElement>) => setServings(parseInt(e.target.value) || 0)}
-            className="w-full px-3 py-2 border rounded-md"
             min="1"
           />
         </div>

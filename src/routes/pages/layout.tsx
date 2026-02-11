@@ -24,6 +24,8 @@ const darkModeScript = `(function(){var t=localStorage.getItem('theme');if(t==='
 
 const seasonScript = `(function(){var m=new Date().getMonth();var s=m>=2&&m<=4?'haru':m>=5&&m<=7?'natsu':m>=8&&m<=10?'aki':'fuyu';var el=document.getElementById('season-mark');if(el)el.dataset.season=s})()`;
 
+const phoneInputScript = `(function(){function n(v){var t=(v||'').trim();if(!t)return'';var d=t.replace(/\\D/g,'');return d?('+'+d):''}function b(i){if(i.dataset.phoneInputBound==='true')return;i.dataset.phoneInputBound='true';var a=function(){var x=n(i.value);if(x!==i.value)i.value=x};i.addEventListener('input',a);i.addEventListener('blur',a);if(i.value)a()}function init(r){(r||document).querySelectorAll('input[type="tel"]').forEach(b)}if(document.readyState==='loading'){document.addEventListener('DOMContentLoaded',function(){init()})}else{init()}new MutationObserver(function(m){m.forEach(function(mu){mu.addedNodes.forEach(function(node){if(!(node instanceof HTMLElement))return;if(node.matches('input[type="tel"]'))b(node);init(node)})})}).observe(document.documentElement,{childList:true,subtree:true})})()`;
+
 export const Layout: FC<LayoutProps> = ({
   title = "ChefDeParty",
   user,
@@ -86,6 +88,7 @@ export const Layout: FC<LayoutProps> = ({
           </header>
         )}
         <MainContainer spacing={mainSpacing}>{children}</MainContainer>
+        <script dangerouslySetInnerHTML={{ __html: phoneInputScript }} />
         {scripts.map((src) => (
           <script key={src} type="module" src={src} />
         ))}
@@ -133,8 +136,9 @@ export const MainContainer: FC<MainContainerProps> = ({
   );
 };
 
-export const PublicLayout: FC<{ title?: string; children?: ReactNode }> = ({
+export const PublicLayout: FC<{ title?: string; scripts?: string[]; children?: ReactNode }> = ({
   title = "ChefDeParty",
+  scripts = [],
   children,
 }) => {
   return (
@@ -151,6 +155,10 @@ export const PublicLayout: FC<{ title?: string; children?: ReactNode }> = ({
       </head>
       <body className="min-h-screen bg-background omakase-texture">
         <main>{children}</main>
+        <script dangerouslySetInnerHTML={{ __html: phoneInputScript }} />
+        {scripts.map((src) => (
+          <script key={src} type="module" src={src} />
+        ))}
       </body>
     </html>
   );
