@@ -45,6 +45,7 @@ export {
   findPendingConfirmationRequest,
   filterMessagesForAI,
   createOnFinishHandler,
+  buildTelemetrySettings,
   getConfirmationToolName,
   getRevisionToolInstructions,
   hashImageData,

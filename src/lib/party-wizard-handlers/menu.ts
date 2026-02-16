@@ -21,11 +21,17 @@ import {
   createWrappedModels,
   filterMessagesForAI,
   createOnFinishHandler,
+  buildTelemetrySettings,
   getConfirmationToolName,
   getRevisionToolInstructions,
   hashImageData,
   saveAssistantMessage,
 } from "./utils";
+import {
+  createLangfuseGeneration,
+  endLangfuseGeneration,
+  updateLangfuseGeneration,
+} from "../langfuse";
 
 export async function handleMenuStep(ctx: HandlerContext): Promise<Response> {
   const {
@@ -37,9 +43,11 @@ export async function handleMenuStep(ctx: HandlerContext): Promise<Response> {
     currentData,
     existingMessages,
     incomingMessage,
+    referenceNow,
     confirmationDecision,
     pendingConfirmationRequest,
     userRecipes = [],
+    telemetry,
   } = ctx;
 
   // Dynamically import AI dependencies
@@ -163,7 +171,14 @@ Previous confirmation summary: "${pendingConfirmationRequest.summary}"`;
                   const timeline = await generateTimelineForParty(
                     partyInfo,
                     currentData.menuPlan,
-                    env
+                    env,
+                    {
+                      traceId: telemetry?.traceId,
+                      sessionId,
+                      userId: user.id,
+                      step: "timeline",
+                      environment: telemetry?.environment,
+                    }
                   );
 
                   // Persist to session
@@ -256,6 +271,20 @@ Previous confirmation summary: "${pendingConfirmationRequest.summary}"`;
             }
 
             try {
+              const imageExtractionGeneration = createLangfuseGeneration(env, {
+                traceId: telemetry?.traceId,
+                name: "wizard.menu.image-extraction",
+                model: "gemini-2.5-flash",
+                input: {
+                  imageCount: imageParts.length,
+                  hasImageHash: Boolean(imageHash),
+                },
+                metadata: {
+                  step,
+                  sessionId,
+                },
+              });
+
               // Extract recipe using vision model
               const { object: recipe } = await generateObject({
                 model: rawVisionModel,
@@ -279,7 +308,23 @@ If the recipe name isn't clear, give it an appropriate name based on the dish.`,
                     ],
                   },
                 ],
+                experimental_telemetry: buildTelemetrySettings(
+                  telemetry,
+                  "wizard.menu.imageExtraction.generateObject",
+                  {
+                    imageCount: imageParts.length,
+                  }
+                ),
               });
+
+              updateLangfuseGeneration(imageExtractionGeneration, {
+                output: {
+                  recipeName: recipe.name,
+                  ingredientCount: recipe.ingredients?.length ?? 0,
+                  instructionCount: recipe.instructions?.length ?? 0,
+                },
+              });
+              endLangfuseGeneration(imageExtractionGeneration);
 
               console.log("[menu] Recipe extracted from image:", recipe.name);
 
@@ -428,12 +473,43 @@ What else would you like to add, or are you ready to finalize the menu?`;
                 throw new Error("Could not extract content from URL");
               }
 
+              const urlExtractionGeneration = createLangfuseGeneration(env, {
+                traceId: telemetry?.traceId,
+                name: "wizard.menu.url-extraction",
+                model: "gemini-2.5-flash",
+                input: {
+                  sourceUrl: url,
+                  contentLength: content.length,
+                },
+                metadata: {
+                  step,
+                  sessionId,
+                },
+              });
+
               // Extract with AI
               const { object: recipe } = await generateObject({
                 model: rawDefaultModel,
                 schema: aiRecipeExtractionSchema,
                 prompt: `Extract the recipe from this webpage. Parse ingredients with amount/unit/name separated.\n\n${content}`,
+                experimental_telemetry: buildTelemetrySettings(
+                  telemetry,
+                  "wizard.menu.urlExtraction.generateObject",
+                  {
+                    sourceUrl: url,
+                    contentLength: content.length,
+                  }
+                ),
               });
+
+              updateLangfuseGeneration(urlExtractionGeneration, {
+                output: {
+                  recipeName: recipe.name,
+                  ingredientCount: recipe.ingredients?.length ?? 0,
+                  instructionCount: recipe.instructions?.length ?? 0,
+                },
+              });
+              endLangfuseGeneration(urlExtractionGeneration);
 
               console.log("[menu] Recipe extracted from URL:", recipe.name);
 
@@ -529,8 +605,10 @@ What else would you like to add, or are you ready to finalize the menu?`;
           userId: user.id,
           env,
           currentData,
+          referenceNow,
           sessionId,
           writer,
+          telemetry,
         });
 
         // Build message history
@@ -562,13 +640,45 @@ What else would you like to add, or are you ready to finalize the menu?`;
           messages: modelMessages,
           tools,
           stopWhen: [stepCountIs(10), hasToolCall(confirmationToolName)],
+          experimental_telemetry: buildTelemetrySettings(
+            telemetry,
+            "wizard.menu.streamText",
+            {
+              messageCount: modelMessages.length,
+              toolCount: Object.keys(tools).length,
+              hasImage,
+              isRevisionRequest,
+            }
+          ),
+        });
+
+        const generation = createLangfuseGeneration(env, {
+          traceId: telemetry?.traceId,
+          name: "wizard.menu.streamText",
+          model: hasImage ? "gemini-2.5-flash-vision" : "gemini-2.5-flash",
+          input: {
+            messageCount: modelMessages.length,
+            toolCount: Object.keys(tools).length,
+            hasImage,
+            isRevisionRequest,
+          },
+          metadata: {
+            step,
+            sessionId,
+          },
         });
 
         writer.merge(result.toUIMessageStream());
         await result.response;
+        const [finishReason, usage] = await Promise.all([result.finishReason, result.usage]);
+        updateLangfuseGeneration(generation, {
+          output: { finishReason },
+          usage,
+        });
+        endLangfuseGeneration(generation);
       },
       generateId: () => crypto.randomUUID(),
-      onFinish: createOnFinishHandler(db, sessionId, step),
+      onFinish: createOnFinishHandler(db, sessionId, step, env, telemetry),
     });
 
     return createUIMessageStreamResponse({ stream });

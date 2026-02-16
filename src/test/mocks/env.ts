@@ -93,6 +93,7 @@ export function createMockEnv(overrides: Partial<Env> = {}): Env {
     AUTH_GOOGLE_SECRET: "mock-google-client-secret",
     LANGFUSE_PUBLIC_KEY: "mock-langfuse-public",
     LANGFUSE_SECRET_KEY: "mock-langfuse-secret",
+    LANGFUSE_BASE_URL: "https://us.cloud.langfuse.com",
     CRON_SECRET: "mock-cron-secret",
     APP_URL: "http://test.local",
     TAVILY_API_KEY: "mock-tavily-key",

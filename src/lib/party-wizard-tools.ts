@@ -29,6 +29,12 @@ import { aiRecipeExtractionSchema } from "./schemas";
 import type { WizardMessage, StepConfirmationRequest } from "./wizard-message-types";
 import type { Env } from "../index";
 import type { createDb } from "./db";
+import { parsePartyDateTimeInput } from "./party-date-parser";
+import {
+  createLangfuseGeneration,
+  endLangfuseGeneration,
+  updateLangfuseGeneration,
+} from "./langfuse";
 
 // Schema for timeline task generation (used by both tool and workflow)
 const TimelineTaskSchema = z.object({
@@ -50,7 +56,14 @@ const TimelineTaskSchema = z.object({
 export async function generateTimelineForParty(
   partyInfo: PartyInfoData,
   menuPlan: MenuPlanData | null | undefined,
-  env: Env
+  env: Env,
+  telemetry?: {
+    traceId?: string;
+    sessionId?: string;
+    userId?: string;
+    step?: WizardStep;
+    environment?: string;
+  }
 ): Promise<TimelineTaskData[]> {
   const { generateObject } = await import("ai");
   const { createAI } = await import("./ai");
@@ -90,11 +103,44 @@ For each task:
 
 Keep it manageable - don't overwhelm with too many tasks.`;
 
+  const generation = createLangfuseGeneration(env, {
+    traceId: telemetry?.traceId,
+    name: "wizard.timeline.generateTimelineForParty",
+    model: "gemini-2.5-flash",
+    input: {
+      partyName: partyInfo.name,
+      menuItemCount: menuItems.length,
+    },
+    metadata: {
+      sessionId: telemetry?.sessionId,
+      step: telemetry?.step || "timeline",
+    },
+  });
+
   const result = await generateObject({
     model: defaultModel,
     schema: z.object({ tasks: z.array(TimelineTaskSchema) }),
     prompt,
+    experimental_telemetry: telemetry?.traceId
+      ? {
+          isEnabled: true,
+          functionId: "wizard.timeline.generateTimelineForParty",
+          metadata: {
+            langfuseTraceId: telemetry.traceId,
+            wizardSessionId: telemetry.sessionId || "unknown",
+            wizardStep: telemetry.step || "timeline",
+            environment: telemetry.environment || "unknown",
+          },
+        }
+      : undefined,
   });
+
+  updateLangfuseGeneration(generation, {
+    output: {
+      taskCount: result.object.tasks.length,
+    },
+  });
+  endLangfuseGeneration(generation);
 
   return result.object.tasks.map((task) => ({
     recipeId: null,
@@ -113,8 +159,41 @@ interface ToolContext {
   userId: string;
   env: Env;
   currentData: Partial<WizardState>;
+  referenceNow?: Date;
   sessionId?: string; // Session ID for persisting state
   writer?: UIMessageStreamWriter<WizardMessage>; // For emitting data parts (HITL)
+  telemetry?: {
+    traceId?: string;
+    sessionId?: string;
+    userId?: string;
+    step?: WizardStep;
+    environment?: string;
+  };
+}
+
+function getToolTelemetrySettings(
+  context: ToolContext,
+  functionId: string,
+  metadata: Record<string, string | number | boolean | undefined> = {}
+) {
+  if (!context.telemetry?.traceId) return undefined;
+
+  const cleanedMetadata: Record<string, string | number | boolean> = {};
+  for (const [key, value] of Object.entries(metadata)) {
+    if (value !== undefined) cleanedMetadata[key] = value;
+  }
+
+  return {
+    isEnabled: true,
+    functionId,
+    metadata: {
+      langfuseTraceId: context.telemetry.traceId,
+      wizardSessionId: context.telemetry.sessionId || context.sessionId || "unknown",
+      wizardStep: context.telemetry.step || "unknown",
+      environment: context.telemetry.environment || "unknown",
+      ...cleanedMetadata,
+    },
+  };
 }
 
 // Helper to update session state in the database
@@ -173,34 +252,29 @@ export function getWizardTools(step: WizardStep, context: ToolContext): ToolSet 
             "Save and confirm the party details. Call this when you have gathered the required information (party name and date/time). This shows a confirmation dialog to the user.",
           inputSchema: confirmPartyInfoToolSchema,
           inputExamples: [
-            { input: { name: "Sarah's 30th Birthday", dateTime: "2024-03-15T19:00:00", location: "My apartment", allowContributions: true } },
-            { input: { name: "Summer BBQ", dateTime: "2024-07-04T16:00:00", description: "Casual backyard cookout", allowContributions: false } },
-            { input: { name: "Dinner Party", dateTime: "2024-02-14T18:30:00", allowContributions: false } },
+            { input: { name: "Sarah's 30th Birthday", dateTimeInput: "next Saturday at 7pm", location: "My apartment", allowContributions: true } },
+            { input: { name: "Summer BBQ", dateTimeInput: "July 4 at 4pm", description: "Casual backyard cookout", allowContributions: false } },
+            { input: { name: "Dinner Party", dateTimeInput: "this weekend on Saturday at 6:30pm", allowContributions: false } },
           ] as const,
           execute: async (data) => {
             console.log("[confirmPartyInfo] Tool called with:", JSON.stringify(data));
 
-            // Parse the date - try ISO first, then try natural language with chrono
-            let parsedDate: Date;
-            const directParse = new Date(data.dateTime);
-            if (!isNaN(directParse.getTime())) {
-              parsedDate = directParse;
-            } else {
-              // If direct parse fails, try to construct a date from natural language
-              // For now, create a date a week from now as fallback and log the issue
-              console.log("[confirmPartyInfo] WARNING: Could not parse date:", data.dateTime);
-              // Try a simple parse for common patterns like "feb 6 at 7pm"
-              const now = new Date();
-              const year = now.getFullYear();
-              // Simple attempt: try adding the year
-              const withYear = new Date(`${data.dateTime} ${year}`);
-              if (!isNaN(withYear.getTime())) {
-                parsedDate = withYear;
-              } else {
-                // Last resort: use a week from now
-                parsedDate = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
-                console.log("[confirmPartyInfo] Using fallback date:", parsedDate);
-              }
+            const rawDateInput = data.dateTimeInput || data.dateTime;
+            const referenceNow = context.referenceNow || new Date();
+            if (!rawDateInput) {
+              return {
+                success: false,
+                error: "Missing date/time input.",
+              };
+            }
+
+            const parsedDate = parsePartyDateTimeInput(rawDateInput, referenceNow);
+            if (!parsedDate) {
+              console.log("[confirmPartyInfo] ERROR: Could not parse date:", rawDateInput);
+              return {
+                success: false,
+                error: "I couldn't understand that date/time. Please provide a specific date (e.g., \"Saturday at 7pm\" or \"March 15 at 6pm\").",
+              };
             }
 
             // Convert string dateTime to Date for PartyInfoData
@@ -226,7 +300,7 @@ export function getWizardTools(step: WizardStep, context: ToolContext): ToolSet 
               id: crypto.randomUUID(),
               step: "party-info",
               nextStep: "guests",
-              summary: `Party: ${data.name} on ${parsedDate.toLocaleDateString("en-US", {
+              summary: `Party: ${data.name} on ${parsedDate.toLocaleString("en-US", {
                 weekday: "long",
                 month: "long",
                 day: "numeric",
@@ -461,12 +535,43 @@ export function getWizardTools(step: WizardStep, context: ToolContext): ToolSet 
               return { success: false, error: "Could not extract content from URL" };
             }
 
+            const extractionGeneration = createLangfuseGeneration(env, {
+              traceId: context.telemetry?.traceId,
+              name: "wizard.menu.extractRecipeFromUrl",
+              model: "gemini-2.5-flash",
+              input: {
+                sourceUrl: data.url,
+                contentLength: content.length,
+              },
+              metadata: {
+                sessionId: context.telemetry?.sessionId || sessionId,
+                step: context.telemetry?.step || step,
+              },
+            });
+
             // Extract with AI
             const { object: recipe } = await generateObject({
               model: defaultModel,
               schema: aiRecipeExtractionSchema,
               prompt: `Extract the recipe from this webpage. Parse ingredients with amount/unit/name separated.\n\n${content}`,
+              experimental_telemetry: getToolTelemetrySettings(
+                context,
+                "wizard.menu.extractRecipeFromUrl.generateObject",
+                {
+                  sourceUrl: data.url,
+                  contentLength: content.length,
+                }
+              ),
             });
+
+            updateLangfuseGeneration(extractionGeneration, {
+              output: {
+                recipeName: recipe.name,
+                ingredientCount: recipe.ingredients?.length ?? 0,
+                instructionCount: recipe.instructions?.length ?? 0,
+              },
+            });
+            endLangfuseGeneration(extractionGeneration);
 
             const menuPlan: MenuPlanData = currentData.menuPlan
               ? { ...currentData.menuPlan, existingRecipes: [...(currentData.menuPlan.existingRecipes || [])], newRecipes: [...(currentData.menuPlan.newRecipes || [])] }
@@ -528,6 +633,20 @@ export function getWizardTools(step: WizardStep, context: ToolContext): ToolSet 
             const { createAI } = await import("./ai");
             const { defaultModel } = createAI(env.GOOGLE_GENERATIVE_AI_API_KEY);
 
+            const generation = createLangfuseGeneration(env, {
+              traceId: context.telemetry?.traceId,
+              name: "wizard.menu.generateRecipeIdea",
+              model: "gemini-2.5-flash",
+              input: {
+                description: data.description,
+                course: data.course,
+              },
+              metadata: {
+                sessionId: context.telemetry?.sessionId || sessionId,
+                step: context.telemetry?.step || step,
+              },
+            });
+
             const { object: recipe } = await generateObject({
               model: defaultModel,
               schema: aiRecipeExtractionSchema,
@@ -541,7 +660,23 @@ Include:
 - Number of servings
 
 Make the recipe practical and achievable for a home cook.`,
+              experimental_telemetry: getToolTelemetrySettings(
+                context,
+                "wizard.menu.generateRecipeIdea.generateObject",
+                {
+                  hasCourse: Boolean(data.course),
+                }
+              ),
             });
+
+            updateLangfuseGeneration(generation, {
+              output: {
+                recipeName: recipe.name,
+                ingredientCount: recipe.ingredients?.length ?? 0,
+                instructionCount: recipe.instructions?.length ?? 0,
+              },
+            });
+            endLangfuseGeneration(generation);
 
             const menuPlan: MenuPlanData = currentData.menuPlan
               ? { ...currentData.menuPlan, existingRecipes: [...(currentData.menuPlan.existingRecipes || [])], newRecipes: [...(currentData.menuPlan.newRecipes || [])] }
@@ -724,7 +859,7 @@ Make the recipe practical and achievable for a home cook.`,
             }
 
             // Use the shared helper function
-            const timeline = await generateTimelineForParty(partyInfo, menuPlan, env);
+            const timeline = await generateTimelineForParty(partyInfo, menuPlan, env, context.telemetry);
 
             // Update currentData in place so subsequent tool calls see the change
             currentData.timeline = timeline;
@@ -779,6 +914,20 @@ Make the recipe practical and achievable for a home cook.`,
               phaseDescription: z.string().nullable(),
             });
 
+            const timelineAdjustmentGeneration = createLangfuseGeneration(env, {
+              traceId: context.telemetry?.traceId,
+              name: "wizard.timeline.adjustTimeline",
+              model: "gemini-2.5-flash",
+              input: {
+                currentTimelineCount: currentTimeline.length,
+                requestedChanges: data.changes,
+              },
+              metadata: {
+                sessionId: context.telemetry?.sessionId || sessionId,
+                step: context.telemetry?.step || step,
+              },
+            });
+
             const result = await generateObject({
               model: defaultModel,
               schema: z.object({ tasks: z.array(TimelineTaskSchema) }),
@@ -790,7 +939,21 @@ ${JSON.stringify(currentTimeline, null, 2)}
 Requested changes: ${data.changes}
 
 Return the updated timeline with all tasks (keep unchanged tasks as-is, modify or add/remove as needed).`,
+              experimental_telemetry: getToolTelemetrySettings(
+                context,
+                "wizard.timeline.adjustTimeline.generateObject",
+                {
+                  currentTimelineCount: currentTimeline.length,
+                }
+              ),
             });
+
+            updateLangfuseGeneration(timelineAdjustmentGeneration, {
+              output: {
+                timelineTaskCount: result.object.tasks.length,
+              },
+            });
+            endLangfuseGeneration(timelineAdjustmentGeneration);
 
             const timeline: TimelineTaskData[] = result.object.tasks.map((task) => ({
               recipeId: null,

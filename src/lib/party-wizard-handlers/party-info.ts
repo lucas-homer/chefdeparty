@@ -17,9 +17,15 @@ import {
   createWrappedModels,
   filterMessagesForAI,
   createOnFinishHandler,
+  buildTelemetrySettings,
   getConfirmationToolName,
   getRevisionToolInstructions,
 } from "./utils";
+import {
+  createLangfuseGeneration,
+  endLangfuseGeneration,
+  updateLangfuseGeneration,
+} from "../langfuse";
 
 export async function handlePartyInfoStep(ctx: HandlerContext): Promise<Response> {
   const {
@@ -31,8 +37,10 @@ export async function handlePartyInfoStep(ctx: HandlerContext): Promise<Response
     currentData,
     existingMessages,
     incomingMessage,
+    referenceNow,
     confirmationDecision,
     pendingConfirmationRequest,
+    telemetry,
   } = ctx;
 
   // Dynamically import AI dependencies
@@ -62,6 +70,16 @@ export async function handlePartyInfoStep(ctx: HandlerContext): Promise<Response
     menuPlan: currentData.menuPlan ?? undefined,
     userRecipes: [],
   });
+
+  const referenceNowIso = (referenceNow || new Date()).toISOString();
+  systemPrompt += `
+
+<date-resolution-context>
+Reference current datetime (ISO, UTC): ${referenceNowIso}
+When calling confirmPartyInfo:
+- Pass the user's natural date text in dateTimeInput (do NOT convert to ISO yourself).
+- The server will resolve dateTimeInput using the reference datetime above.
+</date-resolution-context>`;
 
   // Add revision context if needed
   if (isRevisionRequest && revisionFeedback && pendingConfirmationRequest) {
@@ -144,8 +162,10 @@ Previous confirmation summary: "${pendingConfirmationRequest.summary}"`;
           userId: user.id,
           env,
           currentData,
+          referenceNow,
           sessionId,
           writer,
+          telemetry,
         });
 
         // Build message history
@@ -184,13 +204,43 @@ Previous confirmation summary: "${pendingConfirmationRequest.summary}"`;
             ? { type: "tool", toolName: confirmationToolName }
             : undefined,
           stopWhen: [stepCountIs(10), hasToolCall(confirmationToolName)],
+          experimental_telemetry: buildTelemetrySettings(
+            telemetry,
+            "wizard.party-info.streamText",
+            {
+              messageCount: modelMessages.length,
+              toolCount: Object.keys(tools).length,
+              isRevisionRequest,
+            }
+          ),
+        });
+
+        const generation = createLangfuseGeneration(env, {
+          traceId: telemetry?.traceId,
+          name: "wizard.party-info.streamText",
+          model: "gemini-2.5-flash",
+          input: {
+            messageCount: modelMessages.length,
+            toolCount: Object.keys(tools).length,
+            isRevisionRequest,
+          },
+          metadata: {
+            step,
+            sessionId,
+          },
         });
 
         writer.merge(result.toUIMessageStream());
         await result.response;
+        const [finishReason, usage] = await Promise.all([result.finishReason, result.usage]);
+        updateLangfuseGeneration(generation, {
+          output: { finishReason },
+          usage,
+        });
+        endLangfuseGeneration(generation);
       },
       generateId: () => crypto.randomUUID(),
-      onFinish: createOnFinishHandler(db, sessionId, step),
+      onFinish: createOnFinishHandler(db, sessionId, step, env, telemetry),
     });
 
     return createUIMessageStreamResponse({ stream });

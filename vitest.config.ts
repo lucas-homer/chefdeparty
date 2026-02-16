@@ -8,7 +8,7 @@ export default defineConfig({
     // Default environment for unit tests; component tests use jsdom via comment directive
     environment: "node",
     include: ["src/**/*.test.ts", "src/**/*.test.tsx"],
-    exclude: ["node_modules", ".next", "e2e", "evals"],
+    exclude: ["node_modules", ".next", "e2e"],
     globals: true,
     setupFiles: ["./src/test/setup.ts"],
     // Allow per-file environment override with @vitest-environment jsdom

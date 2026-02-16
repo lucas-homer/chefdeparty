@@ -16,9 +16,15 @@ import {
   createWrappedModels,
   filterMessagesForAI,
   createOnFinishHandler,
+  buildTelemetrySettings,
   getConfirmationToolName,
   getRevisionToolInstructions,
 } from "./utils";
+import {
+  createLangfuseGeneration,
+  endLangfuseGeneration,
+  updateLangfuseGeneration,
+} from "../langfuse";
 
 export async function handleGuestsStep(ctx: HandlerContext): Promise<Response> {
   const {
@@ -30,8 +36,10 @@ export async function handleGuestsStep(ctx: HandlerContext): Promise<Response> {
     currentData,
     existingMessages,
     incomingMessage,
+    referenceNow,
     confirmationDecision,
     pendingConfirmationRequest,
+    telemetry,
   } = ctx;
 
   // Dynamically import AI dependencies
@@ -142,8 +150,10 @@ Previous confirmation summary: "${pendingConfirmationRequest.summary}"`;
           userId: user.id,
           env,
           currentData,
+          referenceNow,
           sessionId,
           writer,
+          telemetry,
         });
 
         // Build message history
@@ -176,13 +186,43 @@ Previous confirmation summary: "${pendingConfirmationRequest.summary}"`;
           messages: modelMessages,
           tools,
           stopWhen: [stepCountIs(10), hasToolCall(confirmationToolName)],
+          experimental_telemetry: buildTelemetrySettings(
+            telemetry,
+            "wizard.guests.streamText",
+            {
+              messageCount: modelMessages.length,
+              toolCount: Object.keys(tools).length,
+              isRevisionRequest,
+            }
+          ),
+        });
+
+        const generation = createLangfuseGeneration(env, {
+          traceId: telemetry?.traceId,
+          name: "wizard.guests.streamText",
+          model: "gemini-2.5-flash",
+          input: {
+            messageCount: modelMessages.length,
+            toolCount: Object.keys(tools).length,
+            isRevisionRequest,
+          },
+          metadata: {
+            step,
+            sessionId,
+          },
         });
 
         writer.merge(result.toUIMessageStream());
         await result.response;
+        const [finishReason, usage] = await Promise.all([result.finishReason, result.usage]);
+        updateLangfuseGeneration(generation, {
+          output: { finishReason },
+          usage,
+        });
+        endLangfuseGeneration(generation);
       },
       generateId: () => crypto.randomUUID(),
-      onFinish: createOnFinishHandler(db, sessionId, step),
+      onFinish: createOnFinishHandler(db, sessionId, step, env, telemetry),
     });
 
     return createUIMessageStreamResponse({ stream });
