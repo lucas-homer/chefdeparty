@@ -28,6 +28,7 @@ export interface Env {
   AUTH_GOOGLE_SECRET: string;
   LANGFUSE_PUBLIC_KEY?: string;
   LANGFUSE_SECRET_KEY?: string;
+  LANGFUSE_BASE_URL?: string;
   CRON_SECRET?: string;
   APP_URL?: string;
   TAVILY_API_KEY?: string;

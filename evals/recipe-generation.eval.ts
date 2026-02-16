@@ -1,8 +1,9 @@
-import { evalite } from "evalite";
+import { evalite, createScorer } from "evalite";
 import { generateText } from "ai";
-import { anthropic } from "@ai-sdk/anthropic";
-import { openai } from "@ai-sdk/openai";
+import { google } from "@ai-sdk/google";
 import { Levenshtein } from "autoevals";
+
+const hasGoogleApiKey = Boolean(process.env.GOOGLE_GENERATIVE_AI_API_KEY);
 
 // Test cases for recipe generation
 const recipePrompts = [
@@ -50,7 +51,6 @@ const recipePrompts = [
   },
 ];
 
-// System prompt for recipe generation
 const systemPrompt = `You are a professional chef assistant. Generate recipes based on user requirements.
 Always respond with valid JSON in this format:
 {
@@ -63,117 +63,132 @@ Always respond with valid JSON in this format:
   "instructions": ["step 1", "step 2", ...]
 }`;
 
-evalite("Recipe Generation", {
-  data: async () => recipePrompts,
+type RecipeEvalInput = {
+  description: string;
+  dietaryRestrictions: string[];
+  servings: number;
+  maxPrepTime?: number;
+};
 
-  task: async (input) => {
-    const prompt = `Generate a recipe for: ${input.description}
+type GeneratedRecipeOutput = {
+  error?: string;
+  raw?: string;
+  name?: string;
+  ingredients?: Array<{ name: string }>;
+  instructions?: string[];
+  servings?: number;
+};
+
+const hasRequiredFieldsScorer = createScorer<RecipeEvalInput, GeneratedRecipeOutput>({
+  name: "Has Required Fields",
+  scorer: async ({ output }) => {
+    if (output.error) return 0;
+
+    const hasName = !!output.name;
+    const hasIngredients =
+      Array.isArray(output.ingredients) && output.ingredients.length > 0;
+    const hasInstructions =
+      Array.isArray(output.instructions) && output.instructions.length > 0;
+    const hasServings = typeof output.servings === "number";
+
+    return [hasName, hasIngredients, hasInstructions, hasServings].filter(Boolean).length / 4;
+  },
+});
+
+const dietaryComplianceScorer = createScorer<RecipeEvalInput, GeneratedRecipeOutput>({
+  name: "Dietary Compliance",
+  scorer: async ({ input, output }) => {
+    if (output.error) return 0;
+    if (input.dietaryRestrictions.length === 0) return 1;
+
+    const ingredients = output.ingredients || [];
+    const ingredientNames = ingredients
+      .map((i: { name: string }) => i.name.toLowerCase())
+      .join(" ");
+
+    if (input.dietaryRestrictions.includes("vegetarian")) {
+      const meatKeywords = ["chicken", "beef", "pork", "fish", "bacon", "ham"];
+      if (meatKeywords.some((m) => ingredientNames.includes(m))) return 0;
+    }
+
+    if (input.dietaryRestrictions.includes("gluten-free")) {
+      const glutenKeywords = ["flour", "bread", "pasta", "wheat"];
+      if (glutenKeywords.some((g) => ingredientNames.includes(g))) return 0;
+    }
+
+    return 1;
+  },
+});
+
+if (!hasGoogleApiKey) {
+  evalite("Recipe Generation (skipped: missing GOOGLE_GENERATIVE_AI_API_KEY)", {
+    data: async () => [{ input: "missing-api-key", expected: "missing-api-key" }],
+    task: async () => "missing-api-key",
+    scorers: [
+      createScorer({
+        name: "Skipped",
+        scorer: async () => 1,
+      }),
+    ],
+  });
+} else {
+  evalite("Recipe Generation", {
+    data: async () => recipePrompts,
+    task: async (input) => {
+      const prompt = `Generate a recipe for: ${input.description}
 ${input.dietaryRestrictions.length > 0 ? `Dietary restrictions: ${input.dietaryRestrictions.join(", ")}` : ""}
 Servings: ${input.servings}
 ${input.maxPrepTime ? `Maximum prep time: ${input.maxPrepTime} minutes` : ""}`;
 
-    const result = await generateText({
-      model: anthropic("claude-3-5-sonnet-20241022"),
-      system: systemPrompt,
-      prompt,
-    });
+      const result = await generateText({
+        model: google("gemini-2.5-flash"),
+        system: systemPrompt,
+        prompt,
+      });
 
-    try {
-      return JSON.parse(result.text);
-    } catch {
-      return { error: "Failed to parse JSON", raw: result.text };
-    }
-  },
-
-  scorers: [
-    // Check if recipe has required fields
-    {
-      name: "Has Required Fields",
-      scorer: async ({ output }) => {
-        if (output.error) return 0;
-
-        const hasName = !!output.name;
-        const hasIngredients =
-          Array.isArray(output.ingredients) && output.ingredients.length > 0;
-        const hasInstructions =
-          Array.isArray(output.instructions) && output.instructions.length > 0;
-        const hasServings = typeof output.servings === "number";
-
-        const score = [hasName, hasIngredients, hasInstructions, hasServings].filter(
-          Boolean
-        ).length / 4;
-
-        return score;
-      },
+      try {
+        return JSON.parse(result.text);
+      } catch {
+        return { error: "Failed to parse JSON", raw: result.text };
+      }
     },
+    scorers: [hasRequiredFieldsScorer, dietaryComplianceScorer],
+  });
 
-    // Check dietary compliance
-    {
-      name: "Dietary Compliance",
-      scorer: async ({ input, output }) => {
-        if (output.error) return 0;
-        if (input.dietaryRestrictions.length === 0) return 1;
+  const comparisonModels = [
+    { name: "Gemini 2.5 Flash", model: google("gemini-2.5-flash") },
+    { name: "Gemini 2.5 Flash Lite", model: google("gemini-2.5-flash-lite") },
+  ] as const;
 
-        const ingredients = output.ingredients || [];
-        const ingredientNames = ingredients
-          .map((i: { name: string }) => i.name.toLowerCase())
-          .join(" ");
-
-        // Simple checks for common restrictions
-        if (input.dietaryRestrictions.includes("vegetarian")) {
-          const meatKeywords = ["chicken", "beef", "pork", "fish", "bacon", "ham"];
-          const containsMeat = meatKeywords.some((m) =>
-            ingredientNames.includes(m)
-          );
-          if (containsMeat) return 0;
-        }
-
-        if (input.dietaryRestrictions.includes("gluten-free")) {
-          const glutenKeywords = ["flour", "bread", "pasta", "wheat"];
-          const containsGluten = glutenKeywords.some((g) =>
-            ingredientNames.includes(g)
-          );
-          if (containsGluten) return 0;
-        }
-
-        return 1;
-      },
-    },
-  ],
-});
-
-// A/B test different models
-evalite.each([
-  { name: "Claude 3.5 Sonnet", model: anthropic("claude-3-5-sonnet-20241022") },
-  { name: "GPT-4o", model: openai("gpt-4o") },
-])("Recipe Generation - $name", {
-  data: async () => recipePrompts.slice(0, 1), // Just test first case for model comparison
-
-  task: async (input, { model }) => {
-    const prompt = `Generate a recipe for: ${input.description}
+  for (const config of comparisonModels) {
+    evalite(`Recipe Generation - ${config.name}`, {
+      data: async () => recipePrompts.slice(0, 1),
+      task: async (input) => {
+        const prompt = `Generate a recipe for: ${input.description}
 Servings: ${input.servings}`;
 
-    const result = await generateText({
-      model,
-      system: systemPrompt,
-      prompt,
+        const result = await generateText({
+          model: config.model,
+          system: systemPrompt,
+          prompt,
+        });
+
+        try {
+          return JSON.parse(result.text);
+        } catch {
+          return { error: "Failed to parse JSON", raw: result.text };
+        }
+      },
+      scorers: [
+        createScorer({
+          name: "Valid JSON Output",
+          scorer: async ({ output }) => (output.error ? 0 : 1),
+        }),
+        Levenshtein({
+          output: "name",
+          expected: "A vegetarian pasta dish",
+        }),
+      ],
     });
-
-    try {
-      return JSON.parse(result.text);
-    } catch {
-      return { error: "Failed to parse JSON", raw: result.text };
-    }
-  },
-
-  scorers: [
-    {
-      name: "Valid JSON Output",
-      scorer: async ({ output }) => (output.error ? 0 : 1),
-    },
-    Levenshtein({
-      output: "name",
-      expected: "A vegetarian pasta dish",
-    }),
-  ],
-});
+  }
+}

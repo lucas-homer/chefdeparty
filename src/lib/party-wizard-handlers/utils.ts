@@ -19,6 +19,7 @@ import type { WizardMessage, StepConfirmationRequest } from "../wizard-message-t
 import type { WizardStep, WizardState } from "../wizard-schemas";
 import type { Env } from "../../index";
 import type { createDb } from "../db";
+import { flushLangfuse } from "../langfuse";
 
 // ============================================
 // Types
@@ -29,6 +30,14 @@ export interface ConfirmationDecision {
   decision:
     | { type: "approve" }
     | { type: "revise"; feedback: string };
+}
+
+export interface WizardTelemetryContext {
+  traceId: string;
+  sessionId: string;
+  userId: string;
+  step: WizardStep;
+  environment: string;
 }
 
 export interface HandlerContext {
@@ -46,9 +55,11 @@ export interface HandlerContext {
     textContent: string;
     hasImage: boolean;
   };
+  referenceNow?: Date;
   confirmationDecision?: ConfirmationDecision;
   pendingConfirmationRequest?: StepConfirmationRequest;
   userRecipes?: Array<{ id: string; name: string; description: string | null }>;
+  telemetry?: WizardTelemetryContext;
 }
 
 export type StepHandler = (ctx: HandlerContext) => Promise<Response>;
@@ -281,7 +292,9 @@ export function filterMessagesForAI(
 export function createOnFinishHandler(
   db: ReturnType<typeof createDb>,
   sessionId: string,
-  step: WizardStep
+  step: WizardStep,
+  env?: Env,
+  telemetry?: WizardTelemetryContext
 ) {
   return async ({ responseMessage }: { responseMessage: { id: string; parts: Array<Record<string, unknown>> } }) => {
     console.log("[onFinish] Response parts count:", responseMessage.parts.length);
@@ -307,6 +320,38 @@ export function createOnFinishHandler(
     };
 
     await saveAssistantMessage(db, sessionId, step, assistantMessage);
+
+    if (env && telemetry?.traceId) {
+      await flushLangfuse(env);
+    }
+  };
+}
+
+/**
+ * Build consistent telemetry metadata for AI SDK calls.
+ */
+export function buildTelemetrySettings(
+  telemetry: WizardTelemetryContext | undefined,
+  functionId: string,
+  metadata: Record<string, string | number | boolean | undefined> = {}
+) {
+  if (!telemetry?.traceId) return undefined;
+
+  const cleanedMetadata: Record<string, string | number | boolean> = {};
+  for (const [key, value] of Object.entries(metadata)) {
+    if (value !== undefined) cleanedMetadata[key] = value;
+  }
+
+  return {
+    isEnabled: true,
+    functionId,
+    metadata: {
+      langfuseTraceId: telemetry.traceId,
+      wizardSessionId: telemetry.sessionId,
+      wizardStep: telemetry.step,
+      environment: telemetry.environment,
+      ...cleanedMetadata,
+    },
   };
 }
 

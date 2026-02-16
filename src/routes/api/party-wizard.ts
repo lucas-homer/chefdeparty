@@ -37,6 +37,10 @@ import {
   findPendingConfirmationRequest,
   type HandlerContext,
 } from "../../lib/party-wizard-handlers";
+import {
+  createLangfuseTrace,
+  getLangfuseEnvironmentName,
+} from "../../lib/langfuse";
 
 type Variables = {
   db: ReturnType<typeof createDb>;
@@ -221,6 +225,7 @@ const partyWizardRoutes = new Hono<AppContext>()
 
     const db = c.get("db");
     const body = await c.req.json();
+    const referenceNow = new Date();
     console.log("[wizard/chat] Body:", JSON.stringify(body, null, 2));
 
     // Validate request
@@ -323,6 +328,20 @@ const partyWizardRoutes = new Hono<AppContext>()
     }
 
     // Build handler context
+    const langfuseTrace = createLangfuseTrace(c.env, {
+      name: "party-wizard.chat",
+      sessionId,
+      userId: user.id,
+      metadata: {
+        step,
+        hasImage: hasImage || false,
+        confirmationDecisionType: confirmationDecision?.decision.type || "none",
+        incomingMessageLength: textContent.length,
+        referenceNowIso: referenceNow.toISOString(),
+      },
+      tags: [`step:${step}`],
+    });
+
     const ctx: HandlerContext = {
       db,
       user: { id: user.id },
@@ -338,9 +357,19 @@ const partyWizardRoutes = new Hono<AppContext>()
         textContent,
         hasImage: hasImage || false,
       },
+      referenceNow,
       confirmationDecision,
       pendingConfirmationRequest,
       userRecipes,
+      telemetry: langfuseTrace
+        ? {
+            traceId: langfuseTrace.id,
+            sessionId,
+            userId: user.id,
+            step,
+            environment: getLangfuseEnvironmentName(c.env),
+          }
+        : undefined,
     };
 
     console.log("[wizard/chat] Step:", step, "Messages count:", existingMessages.length);

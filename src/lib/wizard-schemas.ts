@@ -150,14 +150,18 @@ export type WizardCompleteRequest = z.infer<typeof wizardCompleteRequestSchema>;
 // Tool Result Schemas (for AI tool calls)
 // ============================================
 
-// Party Info Tool - uses string for dateTime since the model generates ISO strings
+// Party Info Tool - accepts natural-language date text, resolved server-side
 export const confirmPartyInfoToolSchema = z.object({
   name: z.string().min(1).describe("Name of the party or event (e.g., 'Sarah's Birthday', 'Summer BBQ')"),
-  dateTime: z.string().describe("Date and time in ISO 8601 format. IMPORTANT: Convert natural language like 'next Saturday at 7pm' to ISO format like '2026-02-06T19:00:00'. Always include the full date and time."),
+  dateTimeInput: z.string().optional().describe("The user's natural-language date/time phrase (e.g., 'this weekend on Saturday at 7pm', 'March 15 at 6pm'). Do NOT convert to ISO."),
+  dateTime: z.string().optional().describe("Deprecated alias for dateTimeInput. Use only if dateTimeInput is unavailable."),
   location: z.string().optional().describe("Where the party will be held (e.g., '123 Main St' or 'My place')"),
   description: z.string().optional().describe("Optional description or details for the invitation"),
   allowContributions: z.boolean().default(false).describe("Whether guests can sign up to bring dishes or drinks"),
-});
+}).refine(
+  (data) => Boolean(data.dateTimeInput || data.dateTime),
+  { message: "dateTimeInput is required (or dateTime for backwards compatibility)" }
+);
 
 // Guest Tools
 // Note: We use a non-refined schema for the tool definition to avoid issues with AI SDK schema generation.
