@@ -327,6 +327,15 @@ const partyWizardRoutes = new Hono<AppContext>()
       name: "party-wizard.chat",
       sessionId,
       userId: user.id,
+      input: {
+        incomingMessage: {
+          id: userMessageId,
+          text: textContent,
+          parts: partsForAI,
+          hasImage: hasImage || false,
+        },
+        messageCountBeforeRequest: existingMessages.length,
+      },
       metadata: {
         step,
         hasImage: hasImage || false,

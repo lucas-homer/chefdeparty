@@ -20,6 +20,7 @@ import type { WizardStep, WizardState } from "../wizard-schemas";
 import type { Env } from "../../index";
 import type { createDb } from "../db";
 import { flushLangfuse } from "../langfuse";
+import { flushLangfuseTelemetry, getLangfuseTelemetryTracer } from "../otel";
 
 // ============================================
 // Types
@@ -356,6 +357,7 @@ export function createOnFinishHandler(
 
     if (env && telemetry?.traceId) {
       await flushLangfuse(env);
+      await flushLangfuseTelemetry();
     }
   };
 }
@@ -366,7 +368,8 @@ export function createOnFinishHandler(
 export function buildTelemetrySettings(
   telemetry: WizardTelemetryContext | undefined,
   functionId: string,
-  metadata: Record<string, string | number | boolean | undefined> = {}
+  metadata: Record<string, string | number | boolean | undefined> = {},
+  env?: Env
 ) {
   if (!telemetry?.traceId) return undefined;
 
@@ -377,6 +380,9 @@ export function buildTelemetrySettings(
 
   return {
     isEnabled: true,
+    recordInputs: true,
+    recordOutputs: true,
+    tracer: env ? getLangfuseTelemetryTracer(env) : undefined,
     functionId,
     metadata: {
       langfuseTraceId: telemetry.traceId,

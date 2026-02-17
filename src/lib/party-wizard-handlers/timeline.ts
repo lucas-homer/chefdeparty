@@ -190,7 +190,8 @@ Previous confirmation summary: "${pendingConfirmationRequest.summary}"`;
               messageCount: modelMessages.length,
               toolCount: Object.keys(tools).length,
               isRevisionRequest,
-            }
+            },
+            env
           ),
         });
 
@@ -199,6 +200,9 @@ Previous confirmation summary: "${pendingConfirmationRequest.summary}"`;
           name: "wizard.timeline.streamText",
           model: "gemini-2.5-flash",
           input: {
+            systemPrompt,
+            messages: modelMessages,
+            toolNames: Object.keys(tools),
             messageCount: modelMessages.length,
             toolCount: Object.keys(tools).length,
             isRevisionRequest,
@@ -210,10 +214,18 @@ Previous confirmation summary: "${pendingConfirmationRequest.summary}"`;
         });
 
         writer.merge(result.toUIMessageStream());
-        await result.response;
-        const [finishReason, usage] = await Promise.all([result.finishReason, result.usage]);
+        const [response, responseText, finishReason, usage] = await Promise.all([
+          result.response,
+          result.text,
+          result.finishReason,
+          result.usage,
+        ]);
         updateLangfuseGeneration(generation, {
-          output: { finishReason },
+          output: {
+            finishReason,
+            text: responseText,
+            responseMessages: response.messages,
+          },
           usage,
         });
         endLangfuseGeneration(generation);
