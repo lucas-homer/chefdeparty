@@ -76,6 +76,47 @@ test.describe("Party Wizard", () => {
     await expect(page.locator("button").filter({ hasText: "4" })).toBeVisible();
   });
 
+  test("should keep messages scrolling inside the wizard shell", async ({ page }) => {
+    await page.getByRole("button", { name: /let's chat/i }).click();
+
+    const messageScroller = page.getByTestId("wizard-messages-scroll");
+    await expect(messageScroller).toBeVisible();
+
+    const composer = page.getByPlaceholder(/describe your party/i);
+    await expect(composer).toBeVisible();
+
+    await messageScroller.evaluate((node) => {
+      const element = node as HTMLElement;
+      const filler = document.createElement("div");
+      filler.id = "wizard-scroll-filler";
+      filler.style.height = "2400px";
+      filler.style.pointerEvents = "none";
+      element.appendChild(filler);
+    });
+
+    const initialComposerTop = await composer.evaluate((node) => node.getBoundingClientRect().top);
+    const initialWindowScrollY = await page.evaluate(() => window.scrollY);
+
+    const scrollMetrics = await messageScroller.evaluate((node) => {
+      const element = node as HTMLElement;
+      element.scrollTop = 900;
+      return {
+        scrollTop: element.scrollTop,
+        scrollHeight: element.scrollHeight,
+        clientHeight: element.clientHeight,
+      };
+    });
+
+    expect(scrollMetrics.scrollHeight).toBeGreaterThan(scrollMetrics.clientHeight);
+    expect(scrollMetrics.scrollTop).toBeGreaterThan(0);
+
+    const finalComposerTop = await composer.evaluate((node) => node.getBoundingClientRect().top);
+    const finalWindowScrollY = await page.evaluate(() => window.scrollY);
+
+    expect(Math.abs(finalComposerTop - initialComposerTop)).toBeLessThan(2);
+    expect(finalWindowScrollY).toBe(initialWindowScrollY);
+  });
+
   test("should have cancel button that returns to parties list", async ({ page }) => {
     // Click on chat option
     await page.getByRole("button", { name: /let's chat/i }).click();

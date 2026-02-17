@@ -899,11 +899,14 @@ function PartyWizardChatInner({
       </div>
 
       {/* Main content area with optional sidebar */}
-      <div className="flex flex-1 min-h-0">
+      <div className="flex flex-1 min-h-0 overflow-hidden">
         {/* Chat area */}
-        <div className={`flex flex-col ${sidebarConfig ? "flex-1 min-w-0" : "w-full"}`}>
+        <div className={`flex min-h-0 flex-col ${sidebarConfig ? "flex-1 min-w-0" : "w-full"}`}>
           {/* Messages area */}
-          <div className="flex-1 p-4 pb-44 space-y-4">
+          <div
+            data-testid="wizard-messages-scroll"
+            className="flex-1 min-h-0 overflow-y-auto p-4 pb-44 space-y-4"
+          >
             {/* Welcome message for each step */}
             {messages.length === 0 && (
               <div className="text-center text-muted-foreground py-8">
