@@ -28,6 +28,7 @@ import { WIZARD_STEPS } from "./types";
 import {
   getToolOutputMessage,
   hasNonEmptyTextPart,
+  isToolPartError,
   shouldRefreshSessionFromAssistantMessage,
 } from "@/lib/wizard-message-parts";
 
@@ -855,19 +856,24 @@ function PartyWizardChatInner({
       return null;
     }
 
-    if (part.type.startsWith("tool-")) {
-      // Avoid duplicate content when the assistant already included a text part.
-      if (hasNonEmptyTextPart(msg)) {
-        return null;
-      }
-
+    if (part.type.startsWith("tool-") || part.type === "dynamic-tool") {
       const toolMessage = getToolOutputMessage(part);
       if (!toolMessage) {
         return null;
       }
 
+      const isErrorPart = isToolPartError(part);
+
+      // Avoid duplicate content when the assistant already included a text part.
+      if (!isErrorPart && hasNonEmptyTextPart(msg)) {
+        return null;
+      }
+
       return (
-        <div key={index} className="text-sm">
+        <div
+          key={index}
+          className={isErrorPart ? "text-sm text-amber-700 dark:text-amber-400" : "text-sm"}
+        >
           {toolMessage}
         </div>
       );

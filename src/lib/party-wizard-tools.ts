@@ -241,6 +241,44 @@ async function updateSessionState(
     );
 }
 
+function cleanOptionalString(value: string | undefined): string | undefined {
+  if (typeof value !== "string") return undefined;
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : undefined;
+}
+
+function looksLikeEmail(value: string): boolean {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
+}
+
+function normalizeGuestInput(data: {
+  name?: string;
+  email?: string;
+  phone?: string;
+}): GuestData | null {
+  let name = cleanOptionalString(data.name);
+  let email = cleanOptionalString(data.email);
+  const phone = cleanOptionalString(data.phone);
+
+  // Recover name-only entries when the model puts a name into the email field.
+  if (email && !looksLikeEmail(email)) {
+    if (!name) {
+      name = email;
+    }
+    email = undefined;
+  }
+
+  if (!name && !email && !phone) {
+    return null;
+  }
+
+  return {
+    name,
+    email,
+    phone,
+  };
+}
+
 export function getWizardTools(step: WizardStep, context: ToolContext): ToolSet {
   const { db, userId, env, currentData, sessionId, writer } = context;
 
@@ -337,7 +375,7 @@ export function getWizardTools(step: WizardStep, context: ToolContext): ToolSet 
       return {
         addGuest: tool({
           description:
-            "Add a guest to the party invitation list. Call this IMMEDIATELY when the user provides any guest contact information - do not just acknowledge in text. Requires at least an email OR phone number.",
+            "Add a guest to the party invitation list. Call this IMMEDIATELY when the user provides guest details - do not just acknowledge in text. Name-only guests are allowed and contact details can be added later.",
           inputSchema: addGuestToolSchema,
           inputExamples: [
             { input: { name: "Sarah", email: "sarah@example.com" } },
@@ -346,20 +384,17 @@ export function getWizardTools(step: WizardStep, context: ToolContext): ToolSet 
             { input: { name: "John Smith", email: "john@work.com", phone: "555-0123" } },
           ] as const,
           execute: async (data) => {
-            // Validate that at least email or phone is provided
-            if (!data.email && !data.phone) {
+            const normalizedGuest = normalizeGuestInput(data);
+            if (!normalizedGuest) {
               return {
                 success: false,
-                error: "Either email or phone is required to add a guest.",
+                error: "Missing guest details.",
+                message: "I need at least a name, email, or phone number to add a guest.",
               };
             }
 
             const guestList: GuestData[] = [...(currentData.guestList || [])];
-            guestList.push({
-              name: data.name,
-              email: data.email,
-              phone: data.phone,
-            });
+            guestList.push(normalizedGuest);
 
             // Update currentData in place so subsequent tool calls see the change
             currentData.guestList = guestList;
@@ -371,7 +406,9 @@ export function getWizardTools(step: WizardStep, context: ToolContext): ToolSet 
               success: true,
               action: "updateGuestList",
               guestList,
-              message: `Added ${data.name || data.email || data.phone} to the guest list.`,
+              message: normalizedGuest.email || normalizedGuest.phone
+                ? `Added ${normalizedGuest.name || normalizedGuest.email || normalizedGuest.phone} to the guest list.`
+                : `Added ${normalizedGuest.name || "guest"} to the guest list. You can add contact details later.`,
             };
           },
         }),

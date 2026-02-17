@@ -168,7 +168,7 @@ export const confirmPartyInfoToolSchema = z.object({
 // The email/phone validation is done in the execute function instead.
 export const addGuestToolSchema = z.object({
   name: z.string().optional().describe("Guest's display name (e.g., 'Sarah Johnson', 'Mom')"),
-  email: z.string().email().optional().describe("Guest's email address for sending the invitation"),
+  email: z.string().optional().describe("Guest's email address (if available)"),
   phone: z.string().optional().describe("Guest's phone number - use this if no email is provided"),
 });
 

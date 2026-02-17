@@ -16,6 +16,11 @@ export function getPartType(part: WizardMessagePart): string {
   return typeof part.type === "string" ? part.type : "unknown";
 }
 
+function isToolPart(part: WizardMessagePart): boolean {
+  const partType = getPartType(part);
+  return partType.startsWith("tool-") || partType === "dynamic-tool";
+}
+
 export function isNonEmptyTextPart(part: WizardMessagePart): boolean {
   if (getPartType(part) !== "text") return false;
   const partWithText = part as { text?: unknown };
@@ -27,8 +32,7 @@ export function hasNonEmptyTextPart(message: UIMessage): boolean {
 }
 
 export function getToolPartOutput(part: WizardMessagePart): Record<string, unknown> | null {
-  const partType = getPartType(part);
-  if (!partType.startsWith("tool-")) return null;
+  if (!isToolPart(part)) return null;
 
   const candidate = part as {
     state?: unknown;
@@ -47,15 +51,35 @@ export function getToolPartOutput(part: WizardMessagePart): Record<string, unkno
   return null;
 }
 
+function getTrimmedString(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : null;
+}
+
+export function isToolPartError(part: WizardMessagePart): boolean {
+  if (!isToolPart(part)) return false;
+  const candidate = part as { state?: unknown };
+  return candidate.state === "output-error";
+}
+
 export function getToolOutputMessage(part: WizardMessagePart): string | null {
   const output = getToolPartOutput(part);
-  if (!output) return null;
+  if (output) {
+    const message = getTrimmedString(output.message);
+    if (message) return message;
 
-  const message = output.message;
-  if (typeof message !== "string") return null;
+    const error = getTrimmedString(output.error);
+    if (error) return error;
+  }
 
-  const trimmed = message.trim();
-  return trimmed.length > 0 ? trimmed : null;
+  if (isToolPartError(part)) {
+    const candidate = part as { errorText?: unknown };
+    const errorText = getTrimmedString(candidate.errorText);
+    if (errorText) return errorText;
+  }
+
+  return null;
 }
 
 export function shouldRefreshSessionFromToolPart(part: WizardMessagePart): boolean {
