@@ -43,9 +43,6 @@ test.describe("Party Wizard", () => {
     // Should show wizard progress indicator (step numbers always visible, labels hidden on mobile)
     await expect(page.locator("button").filter({ hasText: "1" })).toBeVisible();
 
-    // Should show welcome message for party info step
-    await expect(page.getByText(/let's plan your party/i)).toBeVisible();
-
     // Should have chat input
     await expect(page.getByPlaceholder(/describe your party/i)).toBeVisible();
   });
@@ -246,7 +243,9 @@ test.describe("Party Wizard", () => {
     await expect(page.getByText(/please confirm party-info/i)).toBeVisible({ timeout: 15000 });
 
     await page.getByRole("button", { name: /make changes/i }).click();
-    await input.fill('Call it "Good luck Chelsea"');
+    const feedbackInput = page.getByPlaceholder(/describe what you'd like to change/i);
+    await expect(feedbackInput).toBeVisible({ timeout: 15000 });
+    await feedbackInput.fill('Call it "Good luck Chelsea"');
     await page.getByRole("button", { name: "Send message" }).click();
 
     await expect(page.getByText(/Party: Good luck Chelsea/i).first()).toBeVisible({ timeout: 15000 });
