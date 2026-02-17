@@ -1,9 +1,16 @@
-import React, { useState, useEffect, useMemo } from "react";
+import React, { useState, useMemo } from "react";
 import type { TimelineTaskData } from "../../src/lib/wizard-schemas";
+
+export interface TimelineCurationSubmission {
+  curatedTimeline: TimelineTaskData[];
+  feedbackMessage: string;
+  hasChanges: boolean;
+}
 
 interface TimelinePreviewProps {
   timeline: TimelineTaskData[];
-  onCurationChange: (curated: TimelineTaskData[]) => void;
+  onSubmit: (submission: TimelineCurationSubmission) => void;
+  isSubmitting?: boolean;
 }
 
 interface Phase {
@@ -16,7 +23,7 @@ interface Phase {
   }>;
 }
 
-export function TimelinePreview({ timeline, onCurationChange }: TimelinePreviewProps) {
+export function TimelinePreview({ timeline, onSubmit, isSubmitting = false }: TimelinePreviewProps) {
   const [removedIndices, setRemovedIndices] = useState<Set<number>>(new Set());
   const [splitOutIndices, setSplitOutIndices] = useState<Set<number>>(new Set());
 
@@ -42,21 +49,28 @@ export function TimelinePreview({ timeline, onCurationChange }: TimelinePreviewP
     return result;
   }, [timeline]);
 
-  // Compute curated timeline whenever state changes
-  useEffect(() => {
-    const curated = timeline
-      .filter((_, index) => !removedIndices.has(index))
-      .map((task) => {
-        // Find original index in the unfiltered timeline
-        const originalIndex = timeline.indexOf(task);
-        // If split out, mark as phase start (own reminder)
-        if (splitOutIndices.has(originalIndex)) {
-          return { ...task, isPhaseStart: true };
-        }
-        return task;
-      });
-    onCurationChange(curated);
-  }, [timeline, removedIndices, splitOutIndices, onCurationChange]);
+  const curatedTimeline = useMemo(
+    () =>
+      timeline
+        .map((task, index) => ({ task, index }))
+        .filter(({ index }) => !removedIndices.has(index))
+        .map(({ task, index }) =>
+          splitOutIndices.has(index)
+            ? { ...task, isPhaseStart: true }
+            : task
+        ),
+    [timeline, removedIndices, splitOutIndices]
+  );
+
+  const removedTasks = useMemo(
+    () => timeline.filter((_, index) => removedIndices.has(index)),
+    [timeline, removedIndices]
+  );
+
+  const splitOutTasks = useMemo(
+    () => timeline.filter((_, index) => splitOutIndices.has(index) && !removedIndices.has(index)),
+    [timeline, splitOutIndices, removedIndices]
+  );
 
   function handleToggleRemove(index: number) {
     setRemovedIndices((prev) => {
@@ -115,6 +129,35 @@ export function TimelinePreview({ timeline, onCurationChange }: TimelinePreviewP
     // Otherwise, 1 for the phase + split-out count
     const nonSplitCount = activeTasks.filter(({ index }) => !splitOutIndices.has(index)).length;
     return (nonSplitCount > 0 ? 1 : 0) + splitOutCount;
+  }
+
+  function formatTaskForFeedback(task: TimelineTaskData): string {
+    return `${formatDayLabel(task.daysBeforeParty)} @ ${task.scheduledTime} — ${task.description}`;
+  }
+
+  function buildFeedbackMessage(): string {
+    if (removedTasks.length === 0 && splitOutTasks.length === 0) {
+      return "I reviewed the timeline and have no changes. Please keep it as-is.";
+    }
+
+    const lines: string[] = ["I reviewed the timeline and want these updates:"];
+
+    if (removedTasks.length > 0) {
+      lines.push("Remove these tasks:");
+      for (const task of removedTasks) {
+        lines.push(`- ${formatTaskForFeedback(task)}`);
+      }
+    }
+
+    if (splitOutTasks.length > 0) {
+      lines.push("Give these tasks their own reminder:");
+      for (const task of splitOutTasks) {
+        lines.push(`- ${formatTaskForFeedback(task)}`);
+      }
+    }
+
+    lines.push("Please apply these timeline updates.");
+    return lines.join("\n");
   }
 
   return (
@@ -268,6 +311,23 @@ export function TimelinePreview({ timeline, onCurationChange }: TimelinePreviewP
       <p className="text-xs text-muted-foreground text-center">
         {timeline.length - removedIndices.size} of {timeline.length} tasks selected
       </p>
+
+      <div className="flex justify-end">
+        <button
+          type="button"
+          onClick={() =>
+            onSubmit({
+              curatedTimeline,
+              feedbackMessage: buildFeedbackMessage(),
+              hasChanges: removedTasks.length > 0 || splitOutTasks.length > 0,
+            })
+          }
+          disabled={isSubmitting}
+          className="px-3 py-2 text-sm rounded-md bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
+        >
+          {isSubmitting ? "Submitting..." : "Submit timeline changes"}
+        </button>
+      </div>
     </div>
   );
 }

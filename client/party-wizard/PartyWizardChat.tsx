@@ -15,10 +15,20 @@ import { WizardProgress } from "./WizardProgress";
 import { WizardCreating } from "./WizardCreating";
 import { RecipePicker } from "./RecipePicker";
 import { TimelinePreview } from "./TimelinePreview";
+import type { TimelineCurationSubmission } from "./TimelinePreview";
 import { useWizardState } from "./useWizardState";
 import { MobileSidebarTrigger, DesktopSidebarAside } from "./WizardSidebarContainer";
 import type { WizardSidebarItem } from "./WizardSidebar";
-import { BookOpen, Camera, Link, Sparkles, User, Users, UtensilsCrossed } from "lucide-react";
+import {
+  BookOpen,
+  Camera,
+  Clock3,
+  Link,
+  Sparkles,
+  User,
+  Users,
+  UtensilsCrossed,
+} from "lucide-react";
 import type {
   WizardStep,
   UserRecipe,
@@ -402,6 +412,13 @@ function PartyWizardChatInner({
     }
   }
 
+  const handleTimelineSubmit = useCallback((submission: TimelineCurationSubmission) => {
+    if (isLoading) return;
+
+    setCuratedTimeline(submission.curatedTimeline);
+    sendMessage({ text: submission.feedbackMessage });
+  }, [isLoading, sendMessage]);
+
   function handleStepClick(step: WizardStep) {
     setStep(step);
   }
@@ -564,6 +581,23 @@ function PartyWizardChatInner({
             <span className="flex items-center gap-1"><Sparkles className="w-3 h-3" /> AI</span>
           </div>
         ) : undefined,
+      };
+    }
+
+    if (currentStep === "timeline") {
+      const timeline = session.timeline || [];
+      return {
+        title: "Current Timeline",
+        items: timeline.map((task, i) => ({
+          id: String(i),
+          label: `${formatTimelineDay(task.daysBeforeParty)} @ ${task.scheduledTime}`,
+          sublabel: task.description,
+          icon: <Clock3 className="w-4 h-4" />,
+        })),
+        emptyMessage: "No timeline tasks yet",
+        emptyHint: "Timeline tasks will appear after generation.",
+        triggerIcon: <Clock3 className="w-4 h-4" />,
+        triggerLabel: "timeline tasks",
       };
     }
 
@@ -837,7 +871,8 @@ function PartyWizardChatInner({
           <p className="whitespace-pre-wrap">{data.message}</p>
           <TimelinePreview
             timeline={data.timeline}
-            onCurationChange={setCuratedTimeline}
+            onSubmit={handleTimelineSubmit}
+            isSubmitting={isLoading}
           />
         </div>
       );
@@ -1168,31 +1203,18 @@ function PartyWizardChatInner({
         );
       }
       case "timeline":
-        if (!session.timeline || session.timeline.length === 0) return null;
-        return (
-          <div className="bg-muted/30 p-3 rounded-lg max-h-[200px] overflow-y-auto">
-            <p className="text-sm font-medium mb-2">Current timeline:</p>
-            <ul className="space-y-2">
-              {session.timeline.map((task, i) => (
-                <li key={i} className="text-sm border-l-2 border-primary/30 pl-3">
-                  <span className="font-medium">
-                    {task.daysBeforeParty === 0
-                      ? "Day of party"
-                      : task.daysBeforeParty === 1
-                        ? "1 day before"
-                        : `${task.daysBeforeParty} days before`}{" "}
-                    @ {task.scheduledTime}
-                  </span>
-                  <p className="text-muted-foreground">{task.description}</p>
-                </li>
-              ))}
-            </ul>
-          </div>
-        );
+        // Timeline is shown in the sidebar for this step.
+        return null;
       default:
         return null;
     }
   }
+}
+
+function formatTimelineDay(daysBeforeParty: number): string {
+  if (daysBeforeParty === 0) return "Day of party";
+  if (daysBeforeParty === 1) return "1 day before";
+  return `${daysBeforeParty} days before`;
 }
 
 function getStepWelcome(step: WizardStep): string {
