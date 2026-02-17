@@ -210,7 +210,7 @@ test.describe("Party Wizard - Chat Interaction", () => {
     const fileChooserPromise = page.waitForEvent("filechooser");
     await page.getByRole("button", { name: /upload recipe image/i }).click();
     const fileChooser = await fileChooserPromise;
-    await fileChooser.setFiles(path.resolve(__dirname, "fixtures/images/menu-upload-photo.jpg"));
+    await fileChooser.setFiles(path.resolve(__dirname, "fixtures/images/menu-upload-recipe.heic"));
 
     // Wait until direct image extraction path responds (deterministic server message)
     await expect(page.getByText(/from your image and added it to the menu!/i).first()).toBeVisible({
