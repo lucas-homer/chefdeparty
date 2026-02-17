@@ -53,6 +53,32 @@ const stepChangeSchema = z.object({
   step: wizardStepSchema,
 });
 
+function summarizeMessageParts(parts: unknown[] | undefined): {
+  partTypes: string[];
+  textLength: number;
+} {
+  const safeParts = Array.isArray(parts) ? parts : [];
+  const partTypes = safeParts.map((part) => {
+    if (typeof part === "object" && part !== null && "type" in part) {
+      const maybeType = (part as { type?: unknown }).type;
+      if (typeof maybeType === "string") {
+        return maybeType;
+      }
+    }
+    return "unknown";
+  });
+
+  const textLength = safeParts.reduce((total, part) => {
+    if (typeof part !== "object" || part === null) return total;
+    const typedPart = part as { type?: unknown; text?: unknown };
+    if (typedPart.type !== "text") return total;
+    if (typeof typedPart.text !== "string") return total;
+    return total + typedPart.text.length;
+  }, 0);
+
+  return { partTypes, textLength };
+}
+
 const partyWizardRoutes = new Hono<AppContext>()
   .use("*", requireAuth)
 
@@ -226,7 +252,15 @@ const partyWizardRoutes = new Hono<AppContext>()
     const db = c.get("db");
     const body = await c.req.json();
     const referenceNow = new Date();
-    console.log("[wizard/chat] Body:", JSON.stringify(body, null, 2));
+    const requestSummary = summarizeMessageParts(body?.message?.parts);
+    console.log("[wizard/chat] Request summary:", {
+      sessionId: body?.sessionId,
+      role: body?.message?.role,
+      partTypes: requestSummary.partTypes,
+      textLength: requestSummary.textLength,
+      hasConfirmationDecision: !!body?.confirmationDecision,
+      confirmationDecisionType: body?.confirmationDecision?.decision?.type,
+    });
 
     // Validate request
     const parseResult = sessionChatRequestSchema.safeParse(body);
@@ -313,6 +347,17 @@ const partyWizardRoutes = new Hono<AppContext>()
 
     // Find pending confirmation request
     const pendingConfirmationRequest = findPendingConfirmationRequest(existingMessages);
+    const lastAssistantMessage = [...existingMessages]
+      .reverse()
+      .find((message) => message.role === "assistant");
+    const lastAssistantPartsSummary = summarizeMessageParts(lastAssistantMessage?.parts as unknown[] | undefined);
+    console.log("[wizard/chat] Existing step context:", {
+      step,
+      existingMessageCount: existingMessages.length,
+      pendingConfirmationRequestId: pendingConfirmationRequest?.id,
+      pendingConfirmationStep: pendingConfirmationRequest?.step,
+      lastAssistantPartTypes: lastAssistantPartsSummary.partTypes,
+    });
 
     // Load user recipes for menu step
     let userRecipes: Array<{ id: string; name: string; description: string | null }> = [];
@@ -372,7 +417,12 @@ const partyWizardRoutes = new Hono<AppContext>()
         : undefined,
     };
 
-    console.log("[wizard/chat] Step:", step, "Messages count:", existingMessages.length);
+    console.log("[wizard/chat] Delegating to step handler:", {
+      step,
+      existingMessageCount: existingMessages.length,
+      incomingPartTypes: summarizeMessageParts(incomingMessage.parts as unknown[]).partTypes,
+      confirmationDecisionType: confirmationDecision?.decision.type || "none",
+    });
 
     // Delegate to step handler
     return handleWizardStep(ctx);

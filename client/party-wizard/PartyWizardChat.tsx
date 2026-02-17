@@ -3,9 +3,9 @@ import React, {
   useEffect,
   useState,
   useMemo,
+  useCallback,
   FormEvent,
   KeyboardEvent,
-  useCallback,
   startTransition,
 } from "react";
 import { useChat } from "@ai-sdk/react";
@@ -25,6 +25,13 @@ import type {
   TimelineTaskData,
 } from "./types";
 import { WIZARD_STEPS } from "./types";
+import { summarizeWizardMessage } from "@/lib/wizard-message-debug";
+import {
+  getPartType,
+  getToolOutputMessage,
+  hasNonEmptyTextPart,
+  shouldRefreshSessionFromAssistantMessage,
+} from "@/lib/wizard-message-parts";
 
 // Types for HITL step confirmation flow
 interface StepConfirmationRequest {
@@ -123,6 +130,36 @@ function PartyWizardChatInner({
   // Curated timeline from TimelinePreview - used when completing wizard
   const [curatedTimeline, setCuratedTimeline] = useState<TimelineTaskData[] | null>(null);
 
+  const wizardDebugEnabled = useMemo(() => {
+    if (typeof window === "undefined") {
+      return false;
+    }
+
+    const searchParams = new URLSearchParams(window.location.search);
+    return (
+      searchParams.get("wizardDebug") === "1" ||
+      window.localStorage.getItem("wizardDebug") === "1"
+    );
+  }, []);
+
+  const debugLog = useCallback((message: string, payload?: unknown) => {
+    if (!wizardDebugEnabled) return;
+    if (payload === undefined) {
+      console.log(message);
+      return;
+    }
+    console.log(message, payload);
+  }, [wizardDebugEnabled]);
+
+  const debugWarn = useCallback((message: string, payload?: unknown) => {
+    if (!wizardDebugEnabled) return;
+    if (payload === undefined) {
+      console.warn(message);
+      return;
+    }
+    console.warn(message, payload);
+  }, [wizardDebugEnabled]);
+
   // Get current step from session
   const currentStep = session.currentStep as WizardStep;
 
@@ -170,6 +207,7 @@ function PartyWizardChatInner({
       generateId: () => crypto.randomUUID(),
       onFinish: ({ message }) => {
         console.log("[PartyWizardChat] onFinish message:", message);
+        debugLog("[PartyWizardChat][debug] onFinish summary", summarizeWizardMessage(message));
         processDataParts(message);
         // Clear feedbackRequestId now that we have a response
         setFeedbackRequestId(null);
@@ -200,6 +238,38 @@ function PartyWizardChatInner({
     }
     return decided;
   }, [messages, locallyDecidedIds]);
+
+  useEffect(() => {
+    if (!wizardDebugEnabled) return;
+
+    const summaries = messages.map((msg) => summarizeWizardMessage(msg));
+    debugLog("[PartyWizardChat][debug] message-state", {
+      chatId,
+      step: currentStep,
+      status,
+      messageCount: messages.length,
+      summaries,
+    });
+
+    const hiddenAssistantMessages = summaries.filter(
+      (summary) => summary.role === "assistant" && !summary.hasVisibleContent
+    );
+    if (status === "ready" && hiddenAssistantMessages.length > 0) {
+      debugWarn(
+        "[PartyWizardChat][debug] hidden-assistant-messages",
+        hiddenAssistantMessages
+      );
+    }
+  }, [
+    wizardDebugEnabled,
+    debugLog,
+    debugWarn,
+    messages,
+    decidedRequestIds,
+    chatId,
+    currentStep,
+    status,
+  ]);
 
   // Update messages when initial messages change (step change)
   useEffect(() => {
@@ -233,6 +303,15 @@ function PartyWizardChatInner({
   // Process data parts from assistant messages
   function processDataParts(message: UIMessage) {
     let needsRefresh = false;
+    let hasStepTransition = false;
+
+    if (shouldRefreshSessionFromAssistantMessage(message)) {
+      needsRefresh = true;
+      debugLog("[PartyWizardChat][debug] session-refresh-triggered-by-tool-output", {
+        messageId: message.id,
+        partTypes: message.parts.map(getPartType),
+      });
+    }
 
     for (const part of message.parts) {
       if (part.type === "data-step-confirmed") {
@@ -243,6 +322,7 @@ function PartyWizardChatInner({
           // Trigger party creation
           handleWizardComplete();
         } else {
+          hasStepTransition = true;
           // Update to next step after a brief delay
           setTimeout(() => {
             setStep(data.nextStep as WizardStep);
@@ -259,7 +339,7 @@ function PartyWizardChatInner({
     }
 
     // Refresh session if needed (outside the loop to avoid multiple refreshes)
-    if (needsRefresh) {
+    if (needsRefresh && !hasStepTransition) {
       refreshSession();
     }
   }
@@ -844,8 +924,26 @@ function PartyWizardChatInner({
       return null;
     }
 
+    if (part.type.startsWith("tool-")) {
+      // Avoid duplicate content when the assistant already included a text part.
+      if (hasNonEmptyTextPart(msg)) {
+        return null;
+      }
+
+      const toolMessage = getToolOutputMessage(part);
+      if (!toolMessage) {
+        return null;
+      }
+
+      return (
+        <div key={index} className="text-sm">
+          {toolMessage}
+        </div>
+      );
+    }
+
     // Skip tool-invocation and other internal parts
-    if (part.type.startsWith("tool-") || part.type.startsWith("data-")) {
+    if (part.type.startsWith("data-")) {
       return null;
     }
 
@@ -893,6 +991,12 @@ function PartyWizardChatInner({
 
               // Skip rendering the message bubble if no parts have content
               if (!hasVisibleContent) {
+                if (msg.role === "assistant" && status === "ready") {
+                  debugWarn(
+                    "[PartyWizardChat][debug] dropping-assistant-message-in-render",
+                    summarizeWizardMessage(msg)
+                  );
+                }
                 return null;
               }
 
