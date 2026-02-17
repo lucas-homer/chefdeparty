@@ -149,6 +149,39 @@ test.describe("Party Wizard - Chat Interaction", () => {
     // The message history should be visible
     await expect(page.getByText(/birthday party/i).first()).toBeVisible();
   });
+
+  test("should refresh guests sidebar after assistant adds guests", async ({ page }) => {
+    test.setTimeout(90000);
+
+    // Ensure a fresh wizard session for deterministic sidebar assertions
+    await page.request.post("/api/parties/wizard/session/new");
+    await page.goto("/parties/new");
+    await page.getByRole("button", { name: /let's chat/i }).click();
+
+    // Complete party-info step
+    const partyInfoInput = page.getByPlaceholder(/describe your party/i);
+    await partyInfoInput.fill("Dinner party next Saturday at 6pm in San Francisco");
+    await page.getByRole("button", { name: "Send message" }).click();
+
+    await expect(page.getByRole("heading", { name: /please confirm party-info/i })).toBeVisible({
+      timeout: 30000,
+    });
+    await page.getByRole("button", { name: /confirm & continue/i }).click();
+
+    // Add a guest in guests step
+    const guestInput = page.getByPlaceholder(/add a guest/i);
+    await expect(guestInput).toBeVisible({ timeout: 30000 });
+    await guestInput.fill("Regression Guest regression-guest@example.com");
+    await page.getByRole("button", { name: "Send message" }).click();
+
+    // Sidebar should refresh to include the newly added guest
+    await expect(page.getByRole("heading", { name: /guests \(\d+\)/i }).first()).toBeVisible({
+      timeout: 30000,
+    });
+    await expect(page.getByText("regression-guest@example.com", { exact: true })).toBeVisible({
+      timeout: 30000,
+    });
+  });
 });
 
 // Session storage recovery test also requires AI since it needs to trigger state save

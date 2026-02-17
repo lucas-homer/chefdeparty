@@ -297,9 +297,6 @@ export function createOnFinishHandler(
   telemetry?: WizardTelemetryContext
 ) {
   return async ({ responseMessage }: { responseMessage: { id: string; parts: Array<Record<string, unknown>> } }) => {
-    console.log("[onFinish] Response parts count:", responseMessage.parts.length);
-    console.log("[onFinish] Response part types:", responseMessage.parts.map((p) => p.type));
-
     // Convert to serializable format
     const responseParts: Array<Record<string, unknown>> = responseMessage.parts.map((part) => {
       return { ...part };
@@ -307,7 +304,6 @@ export function createOnFinishHandler(
 
     // Only save if the message has meaningful content
     if (responseParts.length === 0) {
-      console.log("[onFinish] Skipping save - empty response parts");
       return;
     }
 

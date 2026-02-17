@@ -219,19 +219,16 @@ const partyWizardRoutes = new Hono<AppContext>()
   // POST /api/parties/wizard/chat - Streaming chat for wizard (session-based)
   // Delegates to step handlers for step-specific logic
   .post("/chat", async (c) => {
-    console.log("[wizard/chat] Request received");
     const user = getUser(c);
     if (!user) return c.json({ error: "Unauthorized" }, 401);
 
     const db = c.get("db");
     const body = await c.req.json();
     const referenceNow = new Date();
-    console.log("[wizard/chat] Body:", JSON.stringify(body, null, 2));
 
     // Validate request
     const parseResult = sessionChatRequestSchema.safeParse(body);
     if (!parseResult.success) {
-      console.log("[wizard/chat] Validation failed:", parseResult.error.errors);
       return c.json({ error: "Invalid request", details: parseResult.error.errors }, 400);
     }
 
@@ -241,8 +238,6 @@ const partyWizardRoutes = new Hono<AppContext>()
     if (incomingMessage.role !== "user") {
       return c.json({ error: "Message must be from user" }, 400);
     }
-
-    console.log("[wizard/chat] Confirmation decision:", confirmationDecision);
 
     // Load session
     const [session] = await db
@@ -371,8 +366,6 @@ const partyWizardRoutes = new Hono<AppContext>()
           }
         : undefined,
     };
-
-    console.log("[wizard/chat] Step:", step, "Messages count:", existingMessages.length);
 
     // Delegate to step handler
     return handleWizardStep(ctx);

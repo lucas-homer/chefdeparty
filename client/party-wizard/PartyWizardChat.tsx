@@ -3,9 +3,9 @@ import React, {
   useEffect,
   useState,
   useMemo,
+  useCallback,
   FormEvent,
   KeyboardEvent,
-  useCallback,
   startTransition,
 } from "react";
 import { useChat } from "@ai-sdk/react";
@@ -25,6 +25,11 @@ import type {
   TimelineTaskData,
 } from "./types";
 import { WIZARD_STEPS } from "./types";
+import {
+  getToolOutputMessage,
+  hasNonEmptyTextPart,
+  shouldRefreshSessionFromAssistantMessage,
+} from "@/lib/wizard-message-parts";
 
 // Types for HITL step confirmation flow
 interface StepConfirmationRequest {
@@ -233,6 +238,11 @@ function PartyWizardChatInner({
   // Process data parts from assistant messages
   function processDataParts(message: UIMessage) {
     let needsRefresh = false;
+    let hasStepTransition = false;
+
+    if (shouldRefreshSessionFromAssistantMessage(message)) {
+      needsRefresh = true;
+    }
 
     for (const part of message.parts) {
       if (part.type === "data-step-confirmed") {
@@ -243,6 +253,7 @@ function PartyWizardChatInner({
           // Trigger party creation
           handleWizardComplete();
         } else {
+          hasStepTransition = true;
           // Update to next step after a brief delay
           setTimeout(() => {
             setStep(data.nextStep as WizardStep);
@@ -259,7 +270,7 @@ function PartyWizardChatInner({
     }
 
     // Refresh session if needed (outside the loop to avoid multiple refreshes)
-    if (needsRefresh) {
+    if (needsRefresh && !hasStepTransition) {
       refreshSession();
     }
   }
@@ -844,8 +855,26 @@ function PartyWizardChatInner({
       return null;
     }
 
+    if (part.type.startsWith("tool-")) {
+      // Avoid duplicate content when the assistant already included a text part.
+      if (hasNonEmptyTextPart(msg)) {
+        return null;
+      }
+
+      const toolMessage = getToolOutputMessage(part);
+      if (!toolMessage) {
+        return null;
+      }
+
+      return (
+        <div key={index} className="text-sm">
+          {toolMessage}
+        </div>
+      );
+    }
+
     // Skip tool-invocation and other internal parts
-    if (part.type.startsWith("tool-") || part.type.startsWith("data-")) {
+    if (part.type.startsWith("data-")) {
       return null;
     }
 
