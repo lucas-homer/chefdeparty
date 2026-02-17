@@ -270,19 +270,56 @@ export function findPendingConfirmationRequest(
 export function filterMessagesForAI(
   messages: SerializedUIMessage[]
 ): SerializedUIMessage[] {
-  return messages.filter((msg) => {
-    const parts = msg.parts as Array<{ type?: string }> | undefined;
+  return messages.flatMap((msg) => {
+    const parts = msg.parts as Array<Record<string, unknown>> | undefined;
     if (!parts || parts.length === 0) {
       console.log("[filterMessagesForAI] Filtering out message with empty parts:", msg.role);
-      return false;
+      return [];
     }
+
+    // Remove storage placeholders for stripped binary content before AI conversion.
+    // These placeholders are useful for persistence, but they are not valid model inputs.
+    const sanitizedParts = parts.filter((part) => {
+      if (part.type === "image") {
+        const hasImageData = typeof part.image === "string" && part.image.length > 0;
+        const isStrippedImagePlaceholder = part.imageStripped === true || !hasImageData;
+        if (isStrippedImagePlaceholder) {
+          return false;
+        }
+      }
+
+      if (part.type === "file") {
+        const hasFileData = typeof part.data === "string" || typeof part.url === "string";
+        const isStrippedFilePlaceholder = part.fileStripped === true || !hasFileData;
+        if (isStrippedFilePlaceholder) {
+          return false;
+        }
+      }
+
+      return true;
+    });
+
+    if (sanitizedParts.length === 0) {
+      console.log(
+        "[filterMessagesForAI] Filtering out message with no usable parts after sanitization:",
+        msg.role
+      );
+      return [];
+    }
+
     // Check if message has at least one non-data part
-    const hasModelContent = parts.some((p) => !p.type?.startsWith("data-"));
+    const hasModelContent = sanitizedParts.some((p) => !String(p.type || "").startsWith("data-"));
     if (!hasModelContent) {
       console.log("[filterMessagesForAI] Filtering out message with only data parts:", msg.role);
-      return false;
+      return [];
     }
-    return true;
+
+    return [
+      {
+        ...msg,
+        parts: sanitizedParts,
+      },
+    ];
   });
 }
 

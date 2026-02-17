@@ -382,6 +382,7 @@ What else would you like to add, or are you ready to finalize the menu?`;
                 role: "assistant",
                 content: responseText,
                 parts: [
+                  { type: "text", text: responseText },
                   {
                     type: "data-recipe-extracted",
                     data: {
@@ -567,6 +568,7 @@ What else would you like to add, or are you ready to finalize the menu?`;
                 role: "assistant",
                 content: responseText,
                 parts: [
+                  { type: "text", text: responseText },
                   {
                     type: "data-recipe-extracted",
                     data: {

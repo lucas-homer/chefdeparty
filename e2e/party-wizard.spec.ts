@@ -1,4 +1,5 @@
 import { test, expect } from "@playwright/test";
+import path from "node:path";
 
 /**
  * E2E tests for the AI Party Wizard.
@@ -189,6 +190,51 @@ test.describe("Party Wizard - Chat Interaction", () => {
     await expect(page.getByText("regression-guest@example.com", { exact: true })).toBeVisible({
       timeout: 30000,
     });
+  });
+
+  test("should not re-surface image extraction disclaimer after successful menu image upload", async ({ page }) => {
+    test.setTimeout(120000);
+
+    // Ensure a fresh session for deterministic assertions
+    await page.request.post("/api/parties/wizard/session/new");
+    await page.goto("/parties/new");
+    await page.getByRole("button", { name: /let's chat/i }).click();
+
+    // Force current step to menu so we can run this regression directly
+    const sessionRes = await page.request.get("/api/parties/wizard/session");
+    const sessionBody = (await sessionRes.json()) as {
+      session?: { id?: string };
+    };
+    const sessionId = sessionBody.session?.id;
+    expect(sessionId).toBeTruthy();
+
+    await page.request.put(`/api/parties/wizard/session/${sessionId}/step`, {
+      data: { step: "menu" },
+    });
+
+    await page.goto("/parties/new");
+    await page.getByRole("button", { name: /let's chat/i }).click();
+
+    const fileChooserPromise = page.waitForEvent("filechooser");
+    await page.getByRole("button", { name: /upload recipe image/i }).click();
+    const fileChooser = await fileChooserPromise;
+    await fileChooser.setFiles(path.resolve(__dirname, "fixtures/images/menu-upload-recipe.heic"));
+
+    // Wait until direct image extraction path responds (deterministic server message)
+    await expect(page.getByText(/from your image and added it to the menu!/i).first()).toBeVisible({
+      timeout: 60000,
+    });
+
+    const input = page.getByPlaceholder(/describe a dish or paste a recipe url/i);
+    await input.fill("ready to finalize");
+    const assistantBubbles = page.locator("div.flex.justify-start div.bg-muted");
+    const assistantBubbleCountBefore = await assistantBubbles.count();
+    await page.getByRole("button", { name: "Send message" }).click();
+
+    await expect.poll(async () => assistantBubbles.count(), {
+      timeout: 30000,
+    }).toBeGreaterThan(assistantBubbleCountBefore);
+    await expect(page.getByText(/can't directly extract recipes from images/i)).toHaveCount(0);
   });
 });
 
