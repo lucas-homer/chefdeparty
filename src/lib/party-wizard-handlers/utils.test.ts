@@ -1,5 +1,5 @@
 import type { SerializedUIMessage } from "../../../drizzle/schema";
-import { filterMessagesForAI, stripLargeDataForStorage } from "./utils";
+import { buildTelemetrySettings, filterMessagesForAI, stripLargeDataForStorage } from "./utils";
 
 function buildMessage(
   role: "user" | "assistant",
@@ -72,6 +72,28 @@ describe("party-wizard handler utils", () => {
         { type: "image", image: "data:image/jpeg;base64,real-data" },
         { type: "text", text: "What dish is this?" },
       ]);
+    });
+  });
+
+  describe("buildTelemetrySettings", () => {
+    it("enables input and output recording when telemetry context exists", () => {
+      const settings = buildTelemetrySettings(
+        {
+          traceId: "trace_123",
+          sessionId: "session_123",
+          userId: "user_123",
+          step: "menu",
+          environment: "development",
+        },
+        "wizard.menu.streamText"
+      );
+
+      expect(settings).toMatchObject({
+        isEnabled: true,
+        recordInputs: true,
+        recordOutputs: true,
+        functionId: "wizard.menu.streamText",
+      });
     });
   });
 });

@@ -271,11 +271,32 @@ Previous confirmation summary: "${pendingConfirmationRequest.summary}"`;
             }
 
             try {
+              const imageExtractionMessages = [
+                {
+                  role: "user" as const,
+                  content: [
+                    ...imageParts.map((img) => ({
+                      type: "image" as const,
+                      image: img.image as string,
+                    })),
+                    {
+                      type: "text" as const,
+                      text: `Extract the recipe from this image. Parse all ingredients with their amounts, units, and names. Include step-by-step instructions.
+
+If the image shows a handwritten or printed recipe card, transcribe it accurately.
+If it shows a dish/food, infer a reasonable recipe for it.
+If the recipe name isn't clear, give it an appropriate name based on the dish.`,
+                    },
+                  ],
+                },
+              ];
+
               const imageExtractionGeneration = createLangfuseGeneration(env, {
                 traceId: telemetry?.traceId,
                 name: "wizard.menu.image-extraction",
                 model: "gemini-2.5-flash",
                 input: {
+                  messages: imageExtractionMessages,
                   imageCount: imageParts.length,
                   hasImageHash: Boolean(imageHash),
                 },
@@ -289,36 +310,20 @@ Previous confirmation summary: "${pendingConfirmationRequest.summary}"`;
               const { object: recipe } = await generateObject({
                 model: rawVisionModel,
                 schema: aiRecipeExtractionSchema,
-                messages: [
-                  {
-                    role: "user",
-                    content: [
-                      ...imageParts.map((img) => ({
-                        type: "image" as const,
-                        image: img.image as string,
-                      })),
-                      {
-                        type: "text" as const,
-                        text: `Extract the recipe from this image. Parse all ingredients with their amounts, units, and names. Include step-by-step instructions.
-
-If the image shows a handwritten or printed recipe card, transcribe it accurately.
-If it shows a dish/food, infer a reasonable recipe for it.
-If the recipe name isn't clear, give it an appropriate name based on the dish.`,
-                      },
-                    ],
-                  },
-                ],
+                messages: imageExtractionMessages,
                 experimental_telemetry: buildTelemetrySettings(
                   telemetry,
                   "wizard.menu.imageExtraction.generateObject",
                   {
                     imageCount: imageParts.length,
-                  }
+                  },
+                  env
                 ),
               });
 
               updateLangfuseGeneration(imageExtractionGeneration, {
                 output: {
+                  recipe,
                   recipeName: recipe.name,
                   ingredientCount: recipe.ingredients?.length ?? 0,
                   instructionCount: recipe.instructions?.length ?? 0,
@@ -474,6 +479,8 @@ What else would you like to add, or are you ready to finalize the menu?`;
                 throw new Error("Could not extract content from URL");
               }
 
+              const urlExtractionPrompt = `Extract the recipe from this webpage. Parse ingredients with amount/unit/name separated.\n\n${content}`;
+
               const urlExtractionGeneration = createLangfuseGeneration(env, {
                 traceId: telemetry?.traceId,
                 name: "wizard.menu.url-extraction",
@@ -481,6 +488,7 @@ What else would you like to add, or are you ready to finalize the menu?`;
                 input: {
                   sourceUrl: url,
                   contentLength: content.length,
+                  prompt: urlExtractionPrompt,
                 },
                 metadata: {
                   step,
@@ -492,19 +500,21 @@ What else would you like to add, or are you ready to finalize the menu?`;
               const { object: recipe } = await generateObject({
                 model: rawDefaultModel,
                 schema: aiRecipeExtractionSchema,
-                prompt: `Extract the recipe from this webpage. Parse ingredients with amount/unit/name separated.\n\n${content}`,
+                prompt: urlExtractionPrompt,
                 experimental_telemetry: buildTelemetrySettings(
                   telemetry,
                   "wizard.menu.urlExtraction.generateObject",
                   {
                     sourceUrl: url,
                     contentLength: content.length,
-                  }
+                  },
+                  env
                 ),
               });
 
               updateLangfuseGeneration(urlExtractionGeneration, {
                 output: {
+                  recipe,
                   recipeName: recipe.name,
                   ingredientCount: recipe.ingredients?.length ?? 0,
                   instructionCount: recipe.instructions?.length ?? 0,
@@ -650,7 +660,8 @@ What else would you like to add, or are you ready to finalize the menu?`;
               toolCount: Object.keys(tools).length,
               hasImage,
               isRevisionRequest,
-            }
+            },
+            env
           ),
         });
 
@@ -659,6 +670,9 @@ What else would you like to add, or are you ready to finalize the menu?`;
           name: "wizard.menu.streamText",
           model: hasImage ? "gemini-2.5-flash-vision" : "gemini-2.5-flash",
           input: {
+            systemPrompt,
+            messages: modelMessages,
+            toolNames: Object.keys(tools),
             messageCount: modelMessages.length,
             toolCount: Object.keys(tools).length,
             hasImage,
@@ -671,10 +685,18 @@ What else would you like to add, or are you ready to finalize the menu?`;
         });
 
         writer.merge(result.toUIMessageStream());
-        await result.response;
-        const [finishReason, usage] = await Promise.all([result.finishReason, result.usage]);
+        const [response, responseText, finishReason, usage] = await Promise.all([
+          result.response,
+          result.text,
+          result.finishReason,
+          result.usage,
+        ]);
         updateLangfuseGeneration(generation, {
-          output: { finishReason },
+          output: {
+            finishReason,
+            text: responseText,
+            responseMessages: response.messages,
+          },
           usage,
         });
         endLangfuseGeneration(generation);

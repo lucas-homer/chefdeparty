@@ -18,6 +18,81 @@ type LangfuseGenerationClient = {
 };
 
 const clientCache = new Map<string, Langfuse>();
+const MAX_STRING_LENGTH = 4000;
+const MAX_ARRAY_ITEMS = 50;
+const MAX_OBJECT_KEYS = 50;
+const MAX_DEPTH = 7;
+
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function sanitizeString(value: string, keyHint?: string): string {
+  const looksLikeImageField = keyHint === "image" || keyHint === "imageUrl" || keyHint === "data";
+  const looksLikeDataUrlImage =
+    value.startsWith("data:image/") && value.includes(";base64,");
+
+  if (looksLikeImageField && looksLikeDataUrlImage) {
+    return `[omitted image data, ${value.length} chars]`;
+  }
+
+  if (value.length > MAX_STRING_LENGTH) {
+    const truncatedChars = value.length - MAX_STRING_LENGTH;
+    return `${value.slice(0, MAX_STRING_LENGTH)}...[truncated ${truncatedChars} chars]`;
+  }
+
+  return value;
+}
+
+function sanitizeLangfuseValue(value: unknown, depth = 0, keyHint?: string): unknown {
+  if (value == null) return value;
+
+  if (depth > MAX_DEPTH) {
+    return "[max depth reached]";
+  }
+
+  if (typeof value === "string") {
+    return sanitizeString(value, keyHint);
+  }
+
+  if (typeof value === "number" || typeof value === "boolean") {
+    return value;
+  }
+
+  if (value instanceof Date) {
+    return value.toISOString();
+  }
+
+  if (Array.isArray(value)) {
+    const trimmed = value.slice(0, MAX_ARRAY_ITEMS);
+    const sanitized = trimmed.map((item) => sanitizeLangfuseValue(item, depth + 1));
+    if (value.length > MAX_ARRAY_ITEMS) {
+      sanitized.push(`[array truncated, ${value.length - MAX_ARRAY_ITEMS} items omitted]`);
+    }
+    return sanitized;
+  }
+
+  if (isPlainObject(value)) {
+    const entries = Object.entries(value);
+    const trimmedEntries = entries.slice(0, MAX_OBJECT_KEYS);
+    const sanitizedEntries = trimmedEntries.map(([key, item]) => [
+      key,
+      sanitizeLangfuseValue(item, depth + 1, key),
+    ]);
+
+    const sanitizedObject = Object.fromEntries(sanitizedEntries);
+    if (entries.length > MAX_OBJECT_KEYS) {
+      sanitizedObject.__truncatedKeys = entries.length - MAX_OBJECT_KEYS;
+    }
+    return sanitizedObject;
+  }
+
+  return String(value);
+}
+
+export function sanitizeLangfusePayload(payload: unknown): unknown {
+  return sanitizeLangfuseValue(payload);
+}
 
 function hasLangfuseCredentials(env: LangfuseBindings): boolean {
   return Boolean(env.LANGFUSE_PUBLIC_KEY && env.LANGFUSE_SECRET_KEY);
@@ -64,6 +139,8 @@ export function createLangfuseTrace(
     name: string;
     sessionId?: string;
     userId?: string;
+    input?: unknown;
+    output?: unknown;
     metadata?: Record<string, unknown>;
     tags?: string[];
   }
@@ -77,9 +154,11 @@ export function createLangfuseTrace(
       name: params.name,
       sessionId: params.sessionId,
       userId: params.userId,
+      input: sanitizeLangfusePayload(params.input),
+      output: sanitizeLangfusePayload(params.output),
       metadata: {
         environment,
-        ...params.metadata,
+        ...(sanitizeLangfusePayload(params.metadata) as Record<string, unknown>),
       },
       tags: Array.from(new Set(["chefdeparty", `env:${environment}`, ...(params.tags || [])])),
     }) as unknown as LangfuseTraceClient;
@@ -111,10 +190,10 @@ export function createLangfuseGeneration(
       traceId: params.traceId,
       name: params.name,
       model: params.model,
-      input: params.input,
+      input: sanitizeLangfusePayload(params.input),
       metadata: {
         environment: getLangfuseEnvironmentName(env),
-        ...params.metadata,
+        ...(sanitizeLangfusePayload(params.metadata) as Record<string, unknown>),
       },
     }) as unknown as LangfuseGenerationClient;
 
@@ -131,7 +210,7 @@ export function updateLangfuseGeneration(
 ): void {
   if (!generation) return;
   try {
-    generation.update(payload);
+    generation.update(sanitizeLangfusePayload(payload) as Record<string, unknown>);
   } catch (error) {
     console.error("[langfuse] Failed to update generation:", error);
   }
@@ -143,7 +222,7 @@ export function endLangfuseGeneration(
 ): void {
   if (!generation) return;
   try {
-    generation.end(payload);
+    generation.end(sanitizeLangfusePayload(payload) as Record<string, unknown>);
   } catch (error) {
     console.error("[langfuse] Failed to end generation:", error);
   }

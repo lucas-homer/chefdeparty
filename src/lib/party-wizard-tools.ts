@@ -35,6 +35,7 @@ import {
   endLangfuseGeneration,
   updateLangfuseGeneration,
 } from "./langfuse";
+import { getLangfuseTelemetryTracer } from "./otel";
 
 // Schema for timeline task generation (used by both tool and workflow)
 const TimelineTaskSchema = z.object({
@@ -109,7 +110,10 @@ Keep it manageable - don't overwhelm with too many tasks.`;
     model: "gemini-2.5-flash",
     input: {
       partyName: partyInfo.name,
+      partyDateTime: partyInfo.dateTime,
+      menuItems,
       menuItemCount: menuItems.length,
+      prompt,
     },
     metadata: {
       sessionId: telemetry?.sessionId,
@@ -124,6 +128,9 @@ Keep it manageable - don't overwhelm with too many tasks.`;
     experimental_telemetry: telemetry?.traceId
       ? {
           isEnabled: true,
+          recordInputs: true,
+          recordOutputs: true,
+          tracer: getLangfuseTelemetryTracer(env),
           functionId: "wizard.timeline.generateTimelineForParty",
           metadata: {
             langfuseTraceId: telemetry.traceId,
@@ -138,6 +145,7 @@ Keep it manageable - don't overwhelm with too many tasks.`;
   updateLangfuseGeneration(generation, {
     output: {
       taskCount: result.object.tasks.length,
+      tasks: result.object.tasks,
     },
   });
   endLangfuseGeneration(generation);
@@ -185,6 +193,9 @@ function getToolTelemetrySettings(
 
   return {
     isEnabled: true,
+    recordInputs: true,
+    recordOutputs: true,
+    tracer: getLangfuseTelemetryTracer(context.env),
     functionId,
     metadata: {
       langfuseTraceId: context.telemetry.traceId,
@@ -572,6 +583,8 @@ export function getWizardTools(step: WizardStep, context: ToolContext): ToolSet 
               return { success: false, error: "Could not extract content from URL" };
             }
 
+            const extractionPrompt = `Extract the recipe from this webpage. Parse ingredients with amount/unit/name separated.\n\n${content}`;
+
             const extractionGeneration = createLangfuseGeneration(env, {
               traceId: context.telemetry?.traceId,
               name: "wizard.menu.extractRecipeFromUrl",
@@ -579,6 +592,7 @@ export function getWizardTools(step: WizardStep, context: ToolContext): ToolSet 
               input: {
                 sourceUrl: data.url,
                 contentLength: content.length,
+                prompt: extractionPrompt,
               },
               metadata: {
                 sessionId: context.telemetry?.sessionId || sessionId,
@@ -590,7 +604,7 @@ export function getWizardTools(step: WizardStep, context: ToolContext): ToolSet 
             const { object: recipe } = await generateObject({
               model: defaultModel,
               schema: aiRecipeExtractionSchema,
-              prompt: `Extract the recipe from this webpage. Parse ingredients with amount/unit/name separated.\n\n${content}`,
+              prompt: extractionPrompt,
               experimental_telemetry: getToolTelemetrySettings(
                 context,
                 "wizard.menu.extractRecipeFromUrl.generateObject",
@@ -603,6 +617,7 @@ export function getWizardTools(step: WizardStep, context: ToolContext): ToolSet 
 
             updateLangfuseGeneration(extractionGeneration, {
               output: {
+                recipe,
                 recipeName: recipe.name,
                 ingredientCount: recipe.ingredients?.length ?? 0,
                 instructionCount: recipe.instructions?.length ?? 0,
@@ -670,6 +685,17 @@ export function getWizardTools(step: WizardStep, context: ToolContext): ToolSet 
             const { createAI } = await import("./ai");
             const { defaultModel } = createAI(env.GOOGLE_GENERATIVE_AI_API_KEY);
 
+            const recipeIdeaPrompt = `Create a detailed recipe for: ${data.description}
+
+Include:
+- A clear, appetizing name
+- Complete ingredient list with amounts
+- Step-by-step instructions
+- Prep and cook times
+- Number of servings
+
+Make the recipe practical and achievable for a home cook.`;
+
             const generation = createLangfuseGeneration(env, {
               traceId: context.telemetry?.traceId,
               name: "wizard.menu.generateRecipeIdea",
@@ -677,6 +703,7 @@ export function getWizardTools(step: WizardStep, context: ToolContext): ToolSet 
               input: {
                 description: data.description,
                 course: data.course,
+                prompt: recipeIdeaPrompt,
               },
               metadata: {
                 sessionId: context.telemetry?.sessionId || sessionId,
@@ -687,16 +714,7 @@ export function getWizardTools(step: WizardStep, context: ToolContext): ToolSet 
             const { object: recipe } = await generateObject({
               model: defaultModel,
               schema: aiRecipeExtractionSchema,
-              prompt: `Create a detailed recipe for: ${data.description}
-
-Include:
-- A clear, appetizing name
-- Complete ingredient list with amounts
-- Step-by-step instructions
-- Prep and cook times
-- Number of servings
-
-Make the recipe practical and achievable for a home cook.`,
+              prompt: recipeIdeaPrompt,
               experimental_telemetry: getToolTelemetrySettings(
                 context,
                 "wizard.menu.generateRecipeIdea.generateObject",
@@ -708,6 +726,7 @@ Make the recipe practical and achievable for a home cook.`,
 
             updateLangfuseGeneration(generation, {
               output: {
+                recipe,
                 recipeName: recipe.name,
                 ingredientCount: recipe.ingredients?.length ?? 0,
                 instructionCount: recipe.instructions?.length ?? 0,
@@ -951,13 +970,24 @@ Make the recipe practical and achievable for a home cook.`,
               phaseDescription: z.string().nullable(),
             });
 
+            const timelineAdjustmentPrompt = `Adjust this cooking timeline based on the user's request.
+
+Current timeline:
+${JSON.stringify(currentTimeline, null, 2)}
+
+Requested changes: ${data.changes}
+
+Return the updated timeline with all tasks (keep unchanged tasks as-is, modify or add/remove as needed).`;
+
             const timelineAdjustmentGeneration = createLangfuseGeneration(env, {
               traceId: context.telemetry?.traceId,
               name: "wizard.timeline.adjustTimeline",
               model: "gemini-2.5-flash",
               input: {
+                currentTimeline,
                 currentTimelineCount: currentTimeline.length,
                 requestedChanges: data.changes,
+                prompt: timelineAdjustmentPrompt,
               },
               metadata: {
                 sessionId: context.telemetry?.sessionId || sessionId,
@@ -968,14 +998,7 @@ Make the recipe practical and achievable for a home cook.`,
             const result = await generateObject({
               model: defaultModel,
               schema: z.object({ tasks: z.array(TimelineTaskSchema) }),
-              prompt: `Adjust this cooking timeline based on the user's request.
-
-Current timeline:
-${JSON.stringify(currentTimeline, null, 2)}
-
-Requested changes: ${data.changes}
-
-Return the updated timeline with all tasks (keep unchanged tasks as-is, modify or add/remove as needed).`,
+              prompt: timelineAdjustmentPrompt,
               experimental_telemetry: getToolTelemetrySettings(
                 context,
                 "wizard.timeline.adjustTimeline.generateObject",
@@ -987,6 +1010,7 @@ Return the updated timeline with all tasks (keep unchanged tasks as-is, modify o
 
             updateLangfuseGeneration(timelineAdjustmentGeneration, {
               output: {
+                tasks: result.object.tasks,
                 timelineTaskCount: result.object.tasks.length,
               },
             });
