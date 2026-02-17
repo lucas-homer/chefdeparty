@@ -4,9 +4,8 @@
 
 Use this loop for any UI work behind authentication.
 
-1. Start local dev in two terminals:
+1. Start local dev:
    - `pnpm dev`
-   - `pnpm dev:client`
 2. Open the app with browser tooling and iterate visually as changes are made.
 3. Use the existing E2E auth bypass by default (do not run real OAuth unless the task is auth-specific):
    - `e2e/auth.setup.ts` creates authenticated storage state.
