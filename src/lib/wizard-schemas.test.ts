@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { confirmPartyInfoToolSchema } from "./wizard-schemas";
+import { addGuestToolSchema, confirmPartyInfoToolSchema } from "./wizard-schemas";
 
 describe("confirmPartyInfoToolSchema", () => {
   it("accepts natural-language date input via dateTimeInput", () => {
@@ -27,5 +27,23 @@ describe("confirmPartyInfoToolSchema", () => {
     });
 
     expect(result.success).toBe(false);
+  });
+});
+
+describe("addGuestToolSchema", () => {
+  it("accepts a name-only guest", () => {
+    const result = addGuestToolSchema.safeParse({
+      name: "Alice",
+    });
+
+    expect(result.success).toBe(true);
+  });
+
+  it("does not reject non-email strings in email field", () => {
+    const result = addGuestToolSchema.safeParse({
+      email: "Alice",
+    });
+
+    expect(result.success).toBe(true);
   });
 });

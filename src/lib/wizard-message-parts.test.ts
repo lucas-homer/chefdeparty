@@ -2,6 +2,7 @@ import type { UIMessage } from "ai";
 import {
   getToolOutputMessage,
   hasNonEmptyTextPart,
+  isToolPartError,
   shouldRefreshSessionFromAssistantMessage,
 } from "./wizard-message-parts";
 
@@ -53,5 +54,35 @@ describe("wizard-message-parts", () => {
 
     expect(hasNonEmptyTextPart(message)).toBe(true);
     expect(shouldRefreshSessionFromAssistantMessage(message)).toBe(false);
+  });
+
+  it("extracts a visible message from tool output-error parts", () => {
+    const message = buildAssistantMessage([
+      {
+        type: "tool-addGuest",
+        state: "output-error",
+        input: { name: "Alice" },
+        errorText: "Either email or phone is required.",
+      },
+    ]);
+
+    const toolPart = message.parts[0];
+    expect(isToolPartError(toolPart)).toBe(true);
+    expect(getToolOutputMessage(toolPart)).toBe("Either email or phone is required.");
+  });
+
+  it("extracts messages from dynamic-tool output", () => {
+    const message = buildAssistantMessage([
+      {
+        type: "dynamic-tool",
+        toolName: "addGuest",
+        toolCallId: "tool-1",
+        state: "output-available",
+        input: { name: "Alice" },
+        output: { message: "Added Alice to the guest list." },
+      },
+    ]);
+
+    expect(getToolOutputMessage(message.parts[0])).toBe("Added Alice to the guest list.");
   });
 });

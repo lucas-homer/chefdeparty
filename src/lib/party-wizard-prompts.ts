@@ -100,7 +100,7 @@ ${context.guestList && context.guestList.length > 0
 </current-state>
 
 <available-tools>
-- addGuest: Add a guest to the list (requires email OR phone, name is optional)
+- addGuest: Add a guest to the list (name, email, and phone are all optional, but include whatever details are available)
 - removeGuest: Remove a guest by index
 - confirmGuestList: Finalize the list and proceed to menu planning
 </available-tools>
@@ -110,8 +110,8 @@ ${context.guestList && context.guestList.length > 0
 - When user wants to remove someone: call removeGuest
 - ONLY call confirmGuestList when user explicitly says they're done (e.g., "that's it", "no more", "done", "ready")
 - Do NOT call confirmGuestList right after adding guests - wait for user to confirm they're done
-- Each guest needs at least an email OR phone number
-- Names are helpful but optional
+- If the user only gives names, still add them now and collect contact details later
+- Contact details (email/phone) are helpful but optional at this stage
 - It's okay to have an empty list - they can add guests later
 </rules>
 
