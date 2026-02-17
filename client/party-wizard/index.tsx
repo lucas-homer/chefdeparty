@@ -47,7 +47,7 @@ function PartyWizardApp({ manualUrl = "/parties/new" }: PartyWizardAppProps) {
     // Keep a fixed available height so only the messages pane scrolls while steps/composer stay pinned.
     // Desktop: contained with max-width.
     return (
-      <div className="-mx-4 -my-8 min-h-[calc(100dvh-65px)] md:mx-auto md:my-0 md:max-w-5xl md:min-h-[calc(100dvh-65px)] flex flex-col">
+      <div className="-mx-4 -my-8 h-[calc(100dvh-65px)] md:mx-auto md:my-0 md:h-[calc(100dvh-65px)] md:max-w-5xl flex flex-col">
         <PartyWizardChat onComplete={handleComplete} onCancel={handleCancel} />
       </div>
     );

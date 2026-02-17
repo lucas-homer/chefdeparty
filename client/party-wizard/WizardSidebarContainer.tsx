@@ -73,7 +73,10 @@ export function MobileSidebarTrigger({
  */
 export function DesktopSidebarAside(props: WizardSidebarProps) {
   return (
-    <div className="hidden md:block w-64 flex-shrink-0 border-l bg-muted/20">
+    <div
+      data-testid="wizard-desktop-sidebar"
+      className="hidden w-64 flex-shrink-0 border-l bg-muted/20 md:flex md:min-h-0 md:flex-col md:overflow-hidden"
+    >
       <WizardSidebar {...props} />
     </div>
   );

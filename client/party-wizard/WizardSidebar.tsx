@@ -26,7 +26,7 @@ export function WizardSidebar({
   footer,
 }: WizardSidebarProps) {
   return (
-    <div className="flex flex-col h-full">
+    <div data-testid="wizard-sidebar-root" className="flex h-full min-h-0 flex-col">
       {/* Header */}
       <div className="p-3 border-b">
         <h3 className="font-medium text-sm">
@@ -35,7 +35,7 @@ export function WizardSidebar({
       </div>
 
       {/* Item list */}
-      <div className="flex-1 overflow-y-auto">
+      <div data-testid="wizard-sidebar-list" className="min-h-0 flex-1 overflow-y-auto">
         {items.length === 0 ? (
           <div className="p-4 text-center text-sm text-muted-foreground">
             <p className="mb-2">{emptyMessage}</p>
