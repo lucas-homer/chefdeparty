@@ -52,6 +52,9 @@ export type ExtractedRecipeData = {
 
 // Custom data parts for wizard-specific data in messages
 export type WizardDataParts = {
+  "session-refresh": {
+    action: "updateGuestList" | "updateMenuPlan" | "updateTimeline";
+  };
   "step-confirmation-request": {
     request: StepConfirmationRequest;
   };

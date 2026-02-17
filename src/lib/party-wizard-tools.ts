@@ -29,7 +29,12 @@ import { aiRecipeExtractionSchema } from "./schemas";
 import type { WizardMessage, StepConfirmationRequest } from "./wizard-message-types";
 import type { Env } from "../index";
 import type { createDb } from "./db";
-import { parsePartyDateTimeInput } from "./party-date-parser";
+import { confirmPartyInfoAction } from "./party-wizard-actions/party-info";
+import {
+  addGuestAction,
+  confirmGuestListAction,
+  removeGuestAction,
+} from "./party-wizard-actions/guests";
 import {
   createLangfuseGeneration,
   endLangfuseGeneration,
@@ -252,44 +257,6 @@ async function updateSessionState(
     );
 }
 
-function cleanOptionalString(value: string | undefined): string | undefined {
-  if (typeof value !== "string") return undefined;
-  const trimmed = value.trim();
-  return trimmed.length > 0 ? trimmed : undefined;
-}
-
-function looksLikeEmail(value: string): boolean {
-  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
-}
-
-function normalizeGuestInput(data: {
-  name?: string;
-  email?: string;
-  phone?: string;
-}): GuestData | null {
-  let name = cleanOptionalString(data.name);
-  let email = cleanOptionalString(data.email);
-  const phone = cleanOptionalString(data.phone);
-
-  // Recover name-only entries when the model puts a name into the email field.
-  if (email && !looksLikeEmail(email)) {
-    if (!name) {
-      name = email;
-    }
-    email = undefined;
-  }
-
-  if (!name && !email && !phone) {
-    return null;
-  }
-
-  return {
-    name,
-    email,
-    phone,
-  };
-}
-
 export function getWizardTools(step: WizardStep, context: ToolContext): ToolSet {
   const { db, userId, env, currentData, sessionId, writer } = context;
 
@@ -306,78 +273,17 @@ export function getWizardTools(step: WizardStep, context: ToolContext): ToolSet 
             { input: { name: "Dinner Party", dateTimeInput: "this weekend on Saturday at 6:30pm", allowContributions: false } },
           ] as const,
           execute: async (data) => {
-            console.log("[confirmPartyInfo] Tool called with:", JSON.stringify(data));
-
-            const rawDateInput = data.dateTimeInput || data.dateTime;
-            const referenceNow = context.referenceNow || new Date();
-            if (!rawDateInput) {
-              return {
-                success: false,
-                error: "Missing date/time input.",
-              };
-            }
-
-            const parsedDate = parsePartyDateTimeInput(rawDateInput, referenceNow);
-            if (!parsedDate) {
-              console.log("[confirmPartyInfo] ERROR: Could not parse date:", rawDateInput);
-              return {
-                success: false,
-                error: "I couldn't understand that date/time. Please provide a specific date (e.g., \"Saturday at 7pm\" or \"March 15 at 6pm\").",
-              };
-            }
-
-            // Convert string dateTime to Date for PartyInfoData
-            const partyInfo: PartyInfoData = {
-              name: data.name,
-              dateTime: parsedDate,
-              location: data.location,
-              description: data.description,
-              allowContributions: data.allowContributions || false,
-            };
-
-            console.log("[confirmPartyInfo] PartyInfo created:", JSON.stringify(partyInfo));
-
-            // Save the data to session (but don't change step yet - wait for user approval)
-            await updateSessionState(db, userId, sessionId, {
-              partyInfo,
-            });
-
-            console.log("[confirmPartyInfo] Session updated");
-
-            // Create confirmation request
-            const request: StepConfirmationRequest = {
-              id: crypto.randomUUID(),
-              step: "party-info",
-              nextStep: "guests",
-              summary: `Party: ${data.name} on ${parsedDate.toLocaleString("en-US", {
-                weekday: "long",
-                month: "long",
-                day: "numeric",
-                year: "numeric",
-                hour: "numeric",
-                minute: "2-digit",
-              })}${data.location ? ` at ${data.location}` : ""}`,
-              data: { partyInfo },
-            };
-
-            console.log("[confirmPartyInfo] Request created:", JSON.stringify(request));
-
-            // Emit data part for HITL confirmation UI
-            if (writer) {
-              console.log("[confirmPartyInfo] Writing data part to stream");
-              writer.write({
-                type: "data-step-confirmation-request",
-                data: { request },
-              });
-            } else {
-              console.log("[confirmPartyInfo] WARNING: No writer available!");
-            }
-
-            return {
-              success: true,
-              action: "awaitingConfirmation",
-              message: "Please confirm the party details above.",
-            };
+            return confirmPartyInfoAction(
+              {
+                db,
+                userId,
+                sessionId,
+                currentData,
+                referenceNow: context.referenceNow,
+                writer,
+              },
+              data
+            );
           },
         }),
       };
@@ -394,34 +300,7 @@ export function getWizardTools(step: WizardStep, context: ToolContext): ToolSet 
             { input: { name: "Mom", phone: "+1-555-123-4567" } },
             { input: { name: "John Smith", email: "john@work.com", phone: "555-0123" } },
           ] as const,
-          execute: async (data) => {
-            const normalizedGuest = normalizeGuestInput(data);
-            if (!normalizedGuest) {
-              return {
-                success: false,
-                error: "Missing guest details.",
-                message: "I need at least a name, email, or phone number to add a guest.",
-              };
-            }
-
-            const guestList: GuestData[] = [...(currentData.guestList || [])];
-            guestList.push(normalizedGuest);
-
-            // Update currentData in place so subsequent tool calls see the change
-            currentData.guestList = guestList;
-
-            // Persist to session
-            await updateSessionState(db, userId, sessionId, { guestList });
-
-            return {
-              success: true,
-              action: "updateGuestList",
-              guestList,
-              message: normalizedGuest.email || normalizedGuest.phone
-                ? `Added ${normalizedGuest.name || normalizedGuest.email || normalizedGuest.phone} to the guest list.`
-                : `Added ${normalizedGuest.name || "guest"} to the guest list. You can add contact details later.`,
-            };
-          },
+          execute: async (data) => addGuestAction({ db, userId, sessionId, currentData }, data),
         }),
         removeGuest: tool({
           description:
@@ -431,26 +310,7 @@ export function getWizardTools(step: WizardStep, context: ToolContext): ToolSet 
             { input: { index: 0 } },
             { input: { index: 2 } },
           ] as const,
-          execute: async (data) => {
-            const guestList: GuestData[] = [...(currentData.guestList || [])];
-            if (data.index < 0 || data.index >= guestList.length) {
-              return { success: false, error: "Invalid guest index" };
-            }
-            const removed = guestList.splice(data.index, 1)[0];
-
-            // Update currentData in place so subsequent tool calls see the change
-            currentData.guestList = guestList;
-
-            // Persist to session
-            await updateSessionState(db, userId, sessionId, { guestList });
-
-            return {
-              success: true,
-              action: "updateGuestList",
-              guestList,
-              message: `Removed ${removed.name || removed.email || removed.phone} from the guest list.`,
-            };
-          },
+          execute: async (data) => removeGuestAction({ db, userId, sessionId, currentData }, data),
         }),
         confirmGuestList: tool({
           description:
@@ -459,36 +319,7 @@ export function getWizardTools(step: WizardStep, context: ToolContext): ToolSet 
           inputExamples: [
             { input: {} },
           ] as const,
-          execute: async () => {
-            const guestList = currentData.guestList || [];
-            const guestCount = guestList.length;
-            const guestNames = guestList.slice(0, 3).map(g => g.name || g.email || g.phone).join(", ");
-
-            // Create confirmation request
-            const request: StepConfirmationRequest = {
-              id: crypto.randomUUID(),
-              step: "guests",
-              nextStep: "menu",
-              summary: guestCount === 0
-                ? "No guests added yet (you can add them later)"
-                : `${guestCount} guest${guestCount === 1 ? "" : "s"}: ${guestNames}${guestCount > 3 ? "..." : ""}`,
-              data: { guestList },
-            };
-
-            // Emit data part for HITL confirmation UI
-            if (writer) {
-              writer.write({
-                type: "data-step-confirmation-request",
-                data: { request },
-              });
-            }
-
-            return {
-              success: true,
-              action: "awaitingConfirmation",
-              message: "Please confirm the guest list above.",
-            };
-          },
+          execute: async () => confirmGuestListAction({ db, userId, sessionId, currentData, writer }),
         }),
       };
 

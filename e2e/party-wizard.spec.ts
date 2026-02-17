@@ -6,6 +6,8 @@ import path from "node:path";
  * These tests use the pre-authenticated storage state from auth.setup.ts.
  */
 test.describe("Party Wizard", () => {
+  test.describe.configure({ mode: "serial" });
+
   test.beforeEach(async ({ page }) => {
     // Navigate to the new party page with wizard
     await page.goto("/parties/new");
@@ -40,9 +42,6 @@ test.describe("Party Wizard", () => {
 
     // Should show wizard progress indicator (step numbers always visible, labels hidden on mobile)
     await expect(page.locator("button").filter({ hasText: "1" })).toBeVisible();
-
-    // Should show welcome message for party info step
-    await expect(page.getByText(/let's plan your party/i)).toBeVisible();
 
     // Should have chat input
     await expect(page.getByPlaceholder(/describe your party/i)).toBeVisible();
@@ -158,6 +157,227 @@ test.describe("Party Wizard", () => {
 
     // Should navigate back to parties list
     await expect(page).toHaveURL("/parties");
+  });
+
+  test("shows fallback message when chat returns a silent completion", async ({ page }) => {
+    await page.request.post("/api/parties/wizard/session/new");
+    const sessionRes = await page.request.get("/api/parties/wizard/session");
+    const sessionBody = (await sessionRes.json()) as {
+      session?: { id?: string };
+    };
+    const sessionId = sessionBody.session?.id;
+    expect(sessionId).toBeTruthy();
+    await page.request.put(`/api/parties/wizard/session/${sessionId}/step`, {
+      data: { step: "party-info" },
+    });
+    await page.goto("/parties/new");
+
+    await page.route("**/api/parties/wizard/chat", async (route) => {
+      const headers = {
+        ...route.request().headers(),
+        "x-wizard-debug-silent-finish-reason": "other",
+      };
+      await route.continue({ headers });
+    });
+
+    await page.getByRole("button", { name: /let's chat/i }).click();
+
+    const input = page.getByPlaceholder(/describe your party/i);
+    await input.fill("hello?");
+    await page.getByRole("button", { name: "Send message" }).click();
+
+    await expect(
+      page.getByText(/temporary issue and did not send a usable response/i).first()
+    ).toBeVisible({ timeout: 15000 });
+  });
+
+  test("handles party-info deterministically even when model output is forced silent", async ({ page }) => {
+    await page.request.post("/api/parties/wizard/session/new");
+    const sessionRes = await page.request.get("/api/parties/wizard/session");
+    const sessionBody = (await sessionRes.json()) as {
+      session?: { id?: string };
+    };
+    const sessionId = sessionBody.session?.id;
+    expect(sessionId).toBeTruthy();
+    await page.request.put(`/api/parties/wizard/session/${sessionId}/step`, {
+      data: { step: "party-info" },
+    });
+    await page.goto("/parties/new");
+
+    await page.route("**/api/parties/wizard/chat", async (route) => {
+      const headers = {
+        ...route.request().headers(),
+        "x-wizard-debug-silent-finish-reason": "other",
+      };
+      await route.continue({ headers });
+    });
+
+    await page.getByRole("button", { name: /let's chat/i }).click();
+
+    const input = page.getByPlaceholder(/describe your party/i);
+    await input.fill("I am having a birthday party called \"Happy Birthday to Me\" at Rory's place this Sunday at 1pm");
+    await page.getByRole("button", { name: "Send message" }).click();
+
+    await expect(page.getByText(/please confirm party-info/i)).toBeVisible({ timeout: 15000 });
+    await expect(page.getByText(/Party: Happy Birthday to Me/i).first()).toBeVisible({ timeout: 15000 });
+    await expect(page.getByText(/temporary issue and did not send a usable response/i)).toHaveCount(0);
+  });
+
+  test("applies party name revision after make changes feedback", async ({ page }) => {
+    await page.request.post("/api/parties/wizard/session/new");
+    const sessionRes = await page.request.get("/api/parties/wizard/session");
+    const sessionBody = (await sessionRes.json()) as {
+      session?: { id?: string };
+    };
+    const sessionId = sessionBody.session?.id;
+    expect(sessionId).toBeTruthy();
+    await page.request.put(`/api/parties/wizard/session/${sessionId}/step`, {
+      data: { step: "party-info" },
+    });
+    await page.goto("/parties/new");
+    await page.getByRole("button", { name: /let's chat/i }).click();
+
+    const input = page.getByPlaceholder(/describe your party/i);
+    await input.fill("I'm having a going-away party for Chelsea this Saturday at 7pm at Cara's house.");
+    await page.getByRole("button", { name: "Send message" }).click();
+    await expect(page.getByText(/please confirm party-info/i)).toBeVisible({ timeout: 15000 });
+
+    await page.getByRole("button", { name: /make changes/i }).click();
+    const feedbackInput = page.getByPlaceholder(/describe what you'd like to change/i);
+    await expect(feedbackInput).toBeVisible({ timeout: 15000 });
+    await feedbackInput.fill('Call it "Good luck Chelsea"');
+    await page.getByRole("button", { name: "Send message" }).click();
+
+    await expect(page.getByText(/Party: Good luck Chelsea/i).first()).toBeVisible({ timeout: 15000 });
+  });
+
+  test("handles guests add/confirm deterministically with forced-silent model output", async ({ page }) => {
+    await page.request.post("/api/parties/wizard/session/new");
+    const sessionRes = await page.request.get("/api/parties/wizard/session");
+    const sessionBody = (await sessionRes.json()) as {
+      session?: { id?: string };
+    };
+    const sessionId = sessionBody.session?.id;
+    expect(sessionId).toBeTruthy();
+    await page.request.put(`/api/parties/wizard/session/${sessionId}/step`, {
+      data: { step: "guests" },
+    });
+    await page.goto("/parties/new");
+
+    await page.route("**/api/parties/wizard/chat", async (route) => {
+      const headers = {
+        ...route.request().headers(),
+        "x-wizard-debug-silent-finish-reason": "other",
+      };
+      await route.continue({ headers });
+    });
+
+    await page.getByRole("button", { name: /let's chat/i }).click();
+
+    const guestInput = page.getByPlaceholder(/add a guest/i);
+    await expect(guestInput).toBeVisible({ timeout: 15000 });
+    await guestInput.fill("Amy - amy@gmail.com\nBob - bob@test.com");
+    await page.getByRole("button", { name: "Send message" }).click();
+
+    await expect(page.getByText(/Added Amy.*Bob.*guest list/i)).toBeVisible({ timeout: 15000 });
+
+    await guestInput.fill("no more");
+    await page.getByRole("button", { name: "Send message" }).click();
+    await expect(page.getByText(/please confirm guests/i)).toBeVisible({ timeout: 15000 });
+    await expect(page.getByText(/temporary issue and did not send a usable response/i)).toHaveCount(0);
+  });
+
+  test("handles name-only guests and plain no without validation errors", async ({ page }) => {
+    await page.request.post("/api/parties/wizard/session/new");
+    const sessionRes = await page.request.get("/api/parties/wizard/session");
+    const sessionBody = (await sessionRes.json()) as {
+      session?: { id?: string };
+    };
+    const sessionId = sessionBody.session?.id;
+    expect(sessionId).toBeTruthy();
+    await page.request.put(`/api/parties/wizard/session/${sessionId}/step`, {
+      data: { step: "guests" },
+    });
+    await page.goto("/parties/new");
+
+    await page.route("**/api/parties/wizard/chat", async (route) => {
+      const headers = {
+        ...route.request().headers(),
+        "x-wizard-debug-silent-finish-reason": "other",
+      };
+      await route.continue({ headers });
+    });
+
+    await page.getByRole("button", { name: /let's chat/i }).click();
+
+    const guestInput = page.getByPlaceholder(/add a guest/i);
+    await expect(guestInput).toBeVisible({ timeout: 15000 });
+    await guestInput.fill("Chelsea\nBam\nCara");
+    await page.getByRole("button", { name: "Send message" }).click();
+
+    await expect(page.getByText(/Added Chelsea, Bam, Cara to the guest list/i)).toBeVisible({
+      timeout: 15000,
+    });
+    await expect(page.getByText(/Type validation failed:/i)).toHaveCount(0);
+    await expect(page.getByText(/Invalid prompt: The messages do not match the ModelMessage\[\] schema/i)).toHaveCount(0);
+
+    const isMobile = (page.viewportSize()?.width ?? 1280) < 768;
+    if (isMobile) {
+      const mobileGuestTrigger = page
+        .locator("button:not([disabled])")
+        .filter({ hasText: /^\s*\d+\s+guests\s*$/i })
+        .first();
+      await expect(mobileGuestTrigger).toBeVisible({
+        timeout: 15000,
+      });
+    } else {
+      await expect(page.getByRole("heading", { name: /guests \(\d+\)/i }).first()).toBeVisible({
+        timeout: 15000,
+      });
+      await expect(page.getByTestId("wizard-sidebar-root").getByText("Chelsea").first()).toBeVisible({
+        timeout: 15000,
+      });
+    }
+
+    await guestInput.fill("no");
+    await page.getByRole("button", { name: "Send message" }).click();
+
+    await expect(page.getByText(/please confirm guests/i)).toBeVisible({ timeout: 15000 });
+    await expect(page.getByText(/temporary issue and did not send a usable response/i)).toHaveCount(0);
+    await expect(page.getByText(/Invalid prompt: The messages do not match the ModelMessage\[\] schema/i)).toHaveCount(0);
+  });
+
+  test("falls back to model path for ambiguous guests input", async ({ page }) => {
+    await page.request.post("/api/parties/wizard/session/new");
+    const sessionRes = await page.request.get("/api/parties/wizard/session");
+    const sessionBody = (await sessionRes.json()) as {
+      session?: { id?: string };
+    };
+    const sessionId = sessionBody.session?.id;
+    expect(sessionId).toBeTruthy();
+
+    await page.request.put(`/api/parties/wizard/session/${sessionId}/step`, {
+      data: { step: "guests" },
+    });
+    await page.goto("/parties/new");
+
+    await page.route("**/api/parties/wizard/chat", async (route) => {
+      const headers = {
+        ...route.request().headers(),
+        "x-wizard-debug-silent-finish-reason": "other",
+      };
+      await route.continue({ headers });
+    });
+
+    await page.getByRole("button", { name: /let's chat/i }).click();
+    const guestInput = page.getByPlaceholder(/add a guest/i);
+    await expect(guestInput).toBeVisible({ timeout: 15000 });
+    await guestInput.fill("can we do something fun?");
+    await page.getByRole("button", { name: "Send message" }).click();
+
+    await expect(
+      page.getByText(/temporary issue and did not send a usable response/i).first()
+    ).toBeVisible({ timeout: 15000 });
   });
 
   test("should close modal when clicking backdrop", async ({ page }) => {

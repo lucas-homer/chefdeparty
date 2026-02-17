@@ -34,6 +34,8 @@ export interface Env {
   TAVILY_API_KEY?: string;
   ADMIN_EMAILS?: string;
   NODE_ENV?: string;
+  WIZARD_STRONG_MODEL?: string;
+  WIZARD_STEP12_DETERMINISTIC_ENABLED?: string;
   // Twilio SMS credentials
   TWILIO_ACCOUNT_SID?: string;
   TWILIO_AUTH_TOKEN?: string;

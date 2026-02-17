@@ -13,6 +13,8 @@ declare global {
     CRON_SECRET?: string;
     APP_URL?: string;
     NODE_ENV?: string;
+    WIZARD_STRONG_MODEL?: string;
+    WIZARD_STEP12_DETERMINISTIC_ENABLED?: string;
   }
 }
 

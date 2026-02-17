@@ -6,7 +6,7 @@ type LangfuseBindings = Pick<
   "LANGFUSE_PUBLIC_KEY" | "LANGFUSE_SECRET_KEY" | "LANGFUSE_BASE_URL" | "NODE_ENV" | "APP_URL"
 >;
 
-type LangfuseTraceClient = {
+export type LangfuseTraceClient = {
   id: string;
   update: (payload: Record<string, unknown>) => unknown;
 };
@@ -213,6 +213,18 @@ export function updateLangfuseGeneration(
     generation.update(sanitizeLangfusePayload(payload) as Record<string, unknown>);
   } catch (error) {
     console.error("[langfuse] Failed to update generation:", error);
+  }
+}
+
+export function updateLangfuseTrace(
+  trace: LangfuseTraceClient | null | undefined,
+  payload: Record<string, unknown>
+): void {
+  if (!trace) return;
+  try {
+    trace.update(sanitizeLangfusePayload(payload) as Record<string, unknown>);
+  } catch (error) {
+    console.error("[langfuse] Failed to update trace:", error);
   }
 }
 
