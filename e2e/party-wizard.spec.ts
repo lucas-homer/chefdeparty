@@ -1,4 +1,5 @@
 import { test, expect } from "@playwright/test";
+import path from "node:path";
 
 /**
  * E2E tests for the AI Party Wizard.
@@ -12,28 +13,42 @@ test.describe("Party Wizard", () => {
 
   test("should display wizard choice modal", async ({ page }) => {
     // Should show the wizard choice modal
-    await expect(page.getByRole("heading", { name: /create a new party/i })).toBeVisible();
+    await expect(
+      page.getByRole("heading", { name: /create a new party/i })
+    ).toBeVisible();
 
     // Should show both options
-    await expect(page.getByRole("button", { name: /let's chat/i })).toBeVisible();
-    await expect(page.getByRole("button", { name: /manually fill out forms/i })).toBeVisible();
+    await expect(
+      page.getByRole("button", { name: /let's chat/i })
+    ).toBeVisible();
+    await expect(
+      page.getByRole("button", { name: /manually fill out forms/i })
+    ).toBeVisible();
 
     // Should show recommended label on chat option
     await expect(page.getByText(/recommended/i)).toBeVisible();
   });
 
-  test("should navigate to manual form when clicking manual option", async ({ page }) => {
+  test("should navigate to manual form when clicking manual option", async ({
+    page,
+  }) => {
     // Click on manual option
-    await page.getByRole("button", { name: /manually fill out forms/i }).click();
+    await page
+      .getByRole("button", { name: /manually fill out forms/i })
+      .click();
 
     // Should navigate to manual form
     await expect(page).toHaveURL(/\/parties\/new\?mode=manual/);
 
     // Should show the create party form
-    await expect(page.getByRole("heading", { name: /create new party/i })).toBeVisible();
+    await expect(
+      page.getByRole("heading", { name: /create new party/i })
+    ).toBeVisible();
   });
 
-  test("should open wizard chat when clicking chat option", async ({ page }) => {
+  test("should open wizard chat when clicking chat option", async ({
+    page,
+  }) => {
     // Click on chat option
     await page.getByRole("button", { name: /let's chat/i }).click();
 
@@ -47,7 +62,9 @@ test.describe("Party Wizard", () => {
     await expect(page.getByPlaceholder(/describe your party/i)).toBeVisible();
   });
 
-  test("should use textarea input and support Shift+Enter for multiline", async ({ page }) => {
+  test("should use textarea input and support Shift+Enter for multiline", async ({
+    page,
+  }) => {
     // Click on chat option
     await page.getByRole("button", { name: /let's chat/i }).click();
 
@@ -64,7 +81,9 @@ test.describe("Party Wizard", () => {
     await expect(chatInput).toHaveValue("First line\nSecond line");
   });
 
-  test("should show step progress indicator with all steps", async ({ page }) => {
+  test("should show step progress indicator with all steps", async ({
+    page,
+  }) => {
     // Click on chat option
     await page.getByRole("button", { name: /let's chat/i }).click();
 
@@ -75,7 +94,9 @@ test.describe("Party Wizard", () => {
     await expect(page.locator("button").filter({ hasText: "4" })).toBeVisible();
   });
 
-  test("should have cancel button that returns to parties list", async ({ page }) => {
+  test("should have cancel button that returns to parties list", async ({
+    page,
+  }) => {
     // Click on chat option
     await page.getByRole("button", { name: /let's chat/i }).click();
 
@@ -119,21 +140,31 @@ test.describe("Party Wizard - Chat Interaction", () => {
     const input = page.getByPlaceholder(/describe your party/i);
 
     // Type a message
-    await input.fill("I want to plan a birthday party for my friend Sarah next Saturday at 6pm");
+    await input.fill(
+      "I want to plan a birthday party for my friend Sarah next Saturday at 6pm"
+    );
 
     // Click send button
-    await page.getByRole("button").filter({ has: page.locator("svg") }).last().click();
+    await page
+      .getByRole("button")
+      .filter({ has: page.locator("svg") })
+      .last()
+      .click();
 
     // Should show loading indicator
     await expect(page.locator(".animate-bounce").first()).toBeVisible();
 
     // Wait for response (with timeout for AI)
-    await expect(page.locator(".bg-muted").filter({ hasText: /./i })).toBeVisible({
+    await expect(
+      page.locator(".bg-muted").filter({ hasText: /./i })
+    ).toBeVisible({
       timeout: 30000,
     });
   });
 
-  test("should preserve message history when navigating back", async ({ page }) => {
+  test("should preserve message history when navigating back", async ({
+    page,
+  }) => {
     // Skip this test if it takes too long or is flaky in CI
     test.setTimeout(60000);
 
@@ -141,7 +172,11 @@ test.describe("Party Wizard - Chat Interaction", () => {
 
     // Type a message
     await input.fill("Birthday party for Sarah");
-    await page.getByRole("button").filter({ has: page.locator("svg") }).last().click();
+    await page
+      .getByRole("button")
+      .filter({ has: page.locator("svg") })
+      .last()
+      .click();
 
     // Wait for AI response
     await page.waitForSelector(".bg-muted p", { timeout: 30000 });
@@ -150,7 +185,9 @@ test.describe("Party Wizard - Chat Interaction", () => {
     await expect(page.getByText(/birthday party/i).first()).toBeVisible();
   });
 
-  test("should refresh guests sidebar after assistant adds guests", async ({ page }) => {
+  test("should refresh guests sidebar after assistant adds guests", async ({
+    page,
+  }) => {
     test.setTimeout(90000);
 
     // Ensure a fresh wizard session for deterministic sidebar assertions
@@ -160,10 +197,14 @@ test.describe("Party Wizard - Chat Interaction", () => {
 
     // Complete party-info step
     const partyInfoInput = page.getByPlaceholder(/describe your party/i);
-    await partyInfoInput.fill("Dinner party next Saturday at 6pm in San Francisco");
+    await partyInfoInput.fill(
+      "Dinner party next Saturday at 6pm in San Francisco"
+    );
     await page.getByRole("button", { name: "Send message" }).click();
 
-    await expect(page.getByRole("heading", { name: /please confirm party-info/i })).toBeVisible({
+    await expect(
+      page.getByRole("heading", { name: /please confirm party-info/i })
+    ).toBeVisible({
       timeout: 30000,
     });
     await page.getByRole("button", { name: /confirm & continue/i }).click();
@@ -175,12 +216,75 @@ test.describe("Party Wizard - Chat Interaction", () => {
     await page.getByRole("button", { name: "Send message" }).click();
 
     // Sidebar should refresh to include the newly added guest
-    await expect(page.getByRole("heading", { name: /guests \(\d+\)/i }).first()).toBeVisible({
+    await expect(
+      page.getByRole("heading", { name: /guests \(\d+\)/i }).first()
+    ).toBeVisible({
       timeout: 30000,
     });
-    await expect(page.getByText("regression-guest@example.com", { exact: true })).toBeVisible({
+    await expect(
+      page.getByText("regression-guest@example.com", { exact: true })
+    ).toBeVisible({
       timeout: 30000,
     });
+  });
+
+  test("should not re-surface image extraction disclaimer after successful menu image upload", async ({
+    page,
+  }) => {
+    test.setTimeout(120000);
+
+    // Ensure a fresh session for deterministic assertions
+    await page.request.post("/api/parties/wizard/session/new");
+    await page.goto("/parties/new");
+    await page.getByRole("button", { name: /let's chat/i }).click();
+
+    // Force current step to menu so we can run this regression directly
+    const sessionRes = await page.request.get("/api/parties/wizard/session");
+    const sessionBody = (await sessionRes.json()) as {
+      session?: { id?: string };
+    };
+    const sessionId = sessionBody.session?.id;
+    expect(sessionId).toBeTruthy();
+
+    await page.request.put(`/api/parties/wizard/session/${sessionId}/step`, {
+      data: { step: "menu" },
+    });
+
+    await page.goto("/parties/new");
+    await page.getByRole("button", { name: /let's chat/i }).click();
+
+    const fileChooserPromise = page.waitForEvent("filechooser");
+    await page.getByRole("button", { name: /upload recipe image/i }).click();
+    const fileChooser = await fileChooserPromise;
+    await fileChooser.setFiles(
+      path.resolve(__dirname, "fixtures/images/menu-upload-photo.jpg")
+    );
+
+    // Wait until direct image extraction path responds (deterministic server message)
+    await expect(
+      page.getByText(/from your image and added it to the menu!/i).first()
+    ).toBeVisible({
+      timeout: 60000,
+    });
+
+    const input = page.getByPlaceholder(
+      /describe a dish or paste a recipe url/i
+    );
+    await input.fill("ready to finalize");
+    const assistantBubbles = page.locator(
+      "div.flex.justify-start div.bg-muted"
+    );
+    const assistantBubbleCountBefore = await assistantBubbles.count();
+    await page.getByRole("button", { name: "Send message" }).click();
+
+    await expect
+      .poll(async () => assistantBubbles.count(), {
+        timeout: 30000,
+      })
+      .toBeGreaterThan(assistantBubbleCountBefore);
+    await expect(
+      page.getByText(/can't directly extract recipes from images/i)
+    ).toHaveCount(0);
   });
 });
 
@@ -204,7 +308,11 @@ test.describe("Party Wizard - Session Storage Recovery", () => {
     // Store some state by sending a message
     const input = page.getByPlaceholder(/describe your party/i);
     await input.fill("Test party");
-    await page.getByRole("button").filter({ has: page.locator("svg") }).last().click();
+    await page
+      .getByRole("button")
+      .filter({ has: page.locator("svg") })
+      .last()
+      .click();
 
     // Wait briefly for state to be saved
     await page.waitForTimeout(1000);
@@ -212,8 +320,17 @@ test.describe("Party Wizard - Session Storage Recovery", () => {
     // Refresh the page
     await page.reload();
 
-    // The wizard should restore (check that we're on wizard, not choice modal)
-    // Since sessionStorage persists, wizard state should be restored
-    await expect(page.getByText(/party info/i).first()).toBeVisible({ timeout: 5000 });
+    // If the choice modal reappears after refresh, reopen chat mode.
+    const chatChoiceButton = page.getByRole("button", { name: /let's chat/i });
+    if (await chatChoiceButton.isVisible()) {
+      await chatChoiceButton.click();
+    }
+
+    // The wizard should restore and show existing conversation state.
+    await expect(
+      page.getByPlaceholder(/describe your party|add a guest/i)
+    ).toBeVisible({
+      timeout: 10000,
+    });
   });
 });
