@@ -117,6 +117,34 @@ test.describe("Party Wizard", () => {
     expect(finalWindowScrollY).toBe(initialWindowScrollY);
   });
 
+  test("should show current timeline sidebar on timeline step", async ({ page }) => {
+    await page.request.post("/api/parties/wizard/session/new");
+
+    const sessionRes = await page.request.get("/api/parties/wizard/session");
+    const sessionBody = (await sessionRes.json()) as {
+      session?: { id?: string };
+    };
+    const sessionId = sessionBody.session?.id;
+    expect(sessionId).toBeTruthy();
+
+    await page.request.put(`/api/parties/wizard/session/${sessionId}/step`, {
+      data: { step: "timeline" },
+    });
+
+    await page.goto("/parties/new");
+    await page.getByRole("button", { name: /let's chat/i }).click();
+
+    const isMobile = (page.viewportSize()?.width ?? 1280) < 768;
+
+    if (isMobile) {
+      await expect(page.getByPlaceholder(/any adjustments to the timeline/i)).toBeVisible();
+      await expect(page.getByRole("heading", { name: /current timeline/i })).toHaveCount(0);
+    } else {
+      await expect(page.getByRole("heading", { name: /current timeline \(0\)/i }).first()).toBeVisible();
+      await expect(page.getByText(/no timeline tasks yet/i).first()).toBeVisible();
+    }
+  });
+
   test("should have cancel button that returns to parties list", async ({ page }) => {
     // Click on chat option
     await page.getByRole("button", { name: /let's chat/i }).click();
