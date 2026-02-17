@@ -297,39 +297,6 @@ export function createOnFinishHandler(
   telemetry?: WizardTelemetryContext
 ) {
   return async ({ responseMessage }: { responseMessage: { id: string; parts: Array<Record<string, unknown>> } }) => {
-    const partTypes = responseMessage.parts.map((p) =>
-      typeof p.type === "string" ? p.type : "unknown"
-    );
-    const hasNonEmptyTextPart = responseMessage.parts.some((part) => {
-      if (part.type !== "text") return false;
-      return typeof part.text === "string" && part.text.trim().length > 0;
-    });
-    const toolPartDetails = responseMessage.parts
-      .filter((part) => typeof part.type === "string" && part.type.startsWith("tool-"))
-      .map((part) => ({
-        type: part.type as string,
-        state: typeof part.state === "string" ? part.state : "unknown",
-        hasOutput: part.output !== undefined,
-      }));
-
-    console.log("[onFinish] Assistant response summary:", {
-      sessionId,
-      step,
-      responseMessageId: responseMessage.id,
-      partCount: responseMessage.parts.length,
-      partTypes,
-      hasNonEmptyTextPart,
-      toolPartDetails,
-    });
-
-    if (!hasNonEmptyTextPart && toolPartDetails.length > 0) {
-      console.warn("[onFinish] Assistant response has tool parts but no text part", {
-        sessionId,
-        step,
-        responseMessageId: responseMessage.id,
-      });
-    }
-
     // Convert to serializable format
     const responseParts: Array<Record<string, unknown>> = responseMessage.parts.map((part) => {
       return { ...part };
@@ -337,7 +304,6 @@ export function createOnFinishHandler(
 
     // Only save if the message has meaningful content
     if (responseParts.length === 0) {
-      console.log("[onFinish] Skipping save - empty response parts");
       return;
     }
 
@@ -350,12 +316,6 @@ export function createOnFinishHandler(
     };
 
     await saveAssistantMessage(db, sessionId, step, assistantMessage);
-    console.log("[onFinish] Saved assistant response to DB", {
-      sessionId,
-      step,
-      responseMessageId: responseMessage.id,
-      savedPartCount: assistantMessage.parts.length,
-    });
 
     if (env && telemetry?.traceId) {
       await flushLangfuse(env);

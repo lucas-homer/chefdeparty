@@ -176,18 +176,6 @@ Previous confirmation summary: "${pendingConfirmationRequest.summary}"`;
           : allMessages;
 
         messagesToConvert = filterMessagesForAI(messagesToConvert);
-        console.log("[guests] AI input summary:", {
-          sessionId,
-          step,
-          existingMessageCount: existingMessages.length,
-          allMessageCount: allMessages.length,
-          filteredMessageCount: messagesToConvert.length,
-          incomingPartTypes: incomingMessage.parts.map((part) =>
-            typeof part.type === "string" ? part.type : "unknown"
-          ),
-          confirmationDecisionType: confirmationDecision?.decision.type || "none",
-          hasPendingConfirmationRequest: !!pendingConfirmationRequest,
-        });
         const modelMessages = await convertToModelMessages(messagesToConvert as WizardMessage[]);
 
         console.log("[guests] Calling streamText with", Object.keys(tools).length, "tools");
@@ -227,12 +215,6 @@ Previous confirmation summary: "${pendingConfirmationRequest.summary}"`;
         writer.merge(result.toUIMessageStream());
         await result.response;
         const [finishReason, usage] = await Promise.all([result.finishReason, result.usage]);
-        console.log("[guests] streamText completed", {
-          sessionId,
-          step,
-          finishReason,
-          usage,
-        });
         updateLangfuseGeneration(generation, {
           output: { finishReason },
           usage,
