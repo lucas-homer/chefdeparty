@@ -2,6 +2,8 @@
  * Guests Step Handler
  *
  * Handles the second wizard step: building the guest list.
+ * - Deterministic extraction for common structured turns
+ * - Model fallback for ambiguous/unstructured turns
  * - addGuest, removeGuest, confirmGuestList tools
  * - Approval transitions to menu step
  */
@@ -19,12 +21,23 @@ import {
   buildTelemetrySettings,
   getConfirmationToolName,
   getRevisionToolInstructions,
+  getSilentCompletionFallbackMessage,
+  isSilentModelCompletion,
+  isStep12DeterministicEnabled,
+  writeTextAndSave,
 } from "./utils";
 import {
   createLangfuseGeneration,
   endLangfuseGeneration,
+  updateLangfuseTrace,
   updateLangfuseGeneration,
 } from "../langfuse";
+import { resolveDeterministicGuestsTurn } from "../party-wizard-deterministic/guests";
+import {
+  addGuestAction,
+  confirmGuestListAction,
+  removeGuestAction,
+} from "../party-wizard-actions/guests";
 
 export async function handleGuestsStep(ctx: HandlerContext): Promise<Response> {
   const {
@@ -40,9 +53,9 @@ export async function handleGuestsStep(ctx: HandlerContext): Promise<Response> {
     confirmationDecision,
     pendingConfirmationRequest,
     telemetry,
+    debug,
   } = ctx;
 
-  // Dynamically import AI dependencies
   const {
     streamText,
     convertToModelMessages,
@@ -52,9 +65,8 @@ export async function handleGuestsStep(ctx: HandlerContext): Promise<Response> {
     createUIMessageStreamResponse,
   } = await import("ai");
 
-  const { defaultModel } = await createWrappedModels(env);
+  const { defaultModel, strongModel } = await createWrappedModels(env);
 
-  // Check if this is a revision request
   const isRevisionRequest = confirmationDecision?.decision.type === "revise";
   const revisionFeedback = isRevisionRequest && confirmationDecision?.decision.type === "revise"
     ? confirmationDecision.decision.feedback
@@ -62,7 +74,6 @@ export async function handleGuestsStep(ctx: HandlerContext): Promise<Response> {
 
   const confirmationToolName = getConfirmationToolName(step);
 
-  // Build system prompt
   let systemPrompt = getStepSystemPrompt(step, {
     partyInfo: currentData.partyInfo ?? undefined,
     guestList: currentData.guestList || [],
@@ -70,7 +81,6 @@ export async function handleGuestsStep(ctx: HandlerContext): Promise<Response> {
     userRecipes: [],
   });
 
-  // Add revision context if needed
   if (isRevisionRequest && revisionFeedback && pendingConfirmationRequest) {
     systemPrompt += `
 
@@ -87,7 +97,6 @@ Previous confirmation summary: "${pendingConfirmationRequest.summary}"`;
   try {
     const stream = createUIMessageStream<WizardMessage>({
       execute: async ({ writer }) => {
-        // If user approved a confirmation, process it
         if (confirmationDecision && pendingConfirmationRequest) {
           const decision = confirmationDecision.decision;
           const request = pendingConfirmationRequest;
@@ -95,7 +104,6 @@ Previous confirmation summary: "${pendingConfirmationRequest.summary}"`;
           if (decision.type === "approve") {
             const nextStep = request.nextStep;
 
-            // Calculate step indices
             const stepIndices = {
               "party-info": 0,
               "guests": 1,
@@ -105,7 +113,6 @@ Previous confirmation summary: "${pendingConfirmationRequest.summary}"`;
             } as const;
             const nextStepIndex = stepIndices[nextStep as keyof typeof stepIndices];
 
-            // Fetch current furthestStepIndex
             const currentSession = await db.query.wizardSessions.findFirst({
               where: eq(wizardSessions.id, sessionId),
               columns: { furthestStepIndex: true },
@@ -113,7 +120,6 @@ Previous confirmation summary: "${pendingConfirmationRequest.summary}"`;
             const currentFurthestIndex = currentSession?.furthestStepIndex ?? 0;
             const newFurthestIndex = Math.max(currentFurthestIndex, nextStepIndex);
 
-            // Update session
             if (nextStep !== "complete") {
               await db
                 .update(wizardSessions)
@@ -130,7 +136,6 @@ Previous confirmation summary: "${pendingConfirmationRequest.summary}"`;
                 );
             }
 
-            // Emit step-confirmed
             writer.write({
               type: "data-step-confirmed",
               data: {
@@ -140,11 +145,137 @@ Previous confirmation summary: "${pendingConfirmationRequest.summary}"`;
               },
             });
 
+            updateLangfuseTrace(telemetry?.traceClient, {
+              output: {
+                event: "step-confirmed",
+                step: request.step,
+                nextStep,
+                requestId: request.id,
+              },
+            });
+
             return;
           }
         }
 
-        // Get tools
+        const deterministicEnabled = isStep12DeterministicEnabled(env);
+        let deterministicHandled = false;
+        let deterministicIntent: string | undefined;
+        let deterministicReason: string | undefined;
+
+        if (deterministicEnabled) {
+          const deterministicText = isRevisionRequest && revisionFeedback
+            ? revisionFeedback
+            : incomingMessage.textContent;
+          const deterministic = resolveDeterministicGuestsTurn({
+            text: deterministicText,
+            currentData,
+          });
+
+          if (deterministic.handled) {
+            deterministicHandled = true;
+            deterministicIntent = deterministic.intent;
+
+            const additionalParts: Array<Record<string, unknown>> = [];
+            let guestListUpdated = false;
+            for (const action of deterministic.actions) {
+              if (action.type === "add-guest") {
+                const result = await addGuestAction(
+                  { db, userId: user.id, sessionId, currentData },
+                  action.payload
+                );
+                if (!result.success) {
+                  await writeTextAndSave(writer, db, sessionId, step, result.message);
+                  updateLangfuseTrace(telemetry?.traceClient, {
+                    output: {
+                      decisionPath: "deterministic",
+                      deterministicHandled: true,
+                      deterministicIntent,
+                      deterministicActionError: result.error,
+                      modelTierUsed: "none",
+                    },
+                  });
+                  return;
+                }
+
+                if (result.action === "updateGuestList") {
+                  guestListUpdated = true;
+                }
+                continue;
+              }
+
+              if (action.type === "remove-guest") {
+                const result = await removeGuestAction(
+                  { db, userId: user.id, sessionId, currentData },
+                  action.payload
+                );
+                if (!result.success) {
+                  await writeTextAndSave(writer, db, sessionId, step, result.error);
+                  updateLangfuseTrace(telemetry?.traceClient, {
+                    output: {
+                      decisionPath: "deterministic",
+                      deterministicHandled: true,
+                      deterministicIntent,
+                      deterministicActionError: result.error,
+                      modelTierUsed: "none",
+                    },
+                  });
+                  return;
+                }
+
+                if (result.action === "updateGuestList") {
+                  guestListUpdated = true;
+                }
+                continue;
+              }
+
+              if (action.type === "confirm-guest-list") {
+                const result = await confirmGuestListAction({
+                  db,
+                  userId: user.id,
+                  sessionId,
+                  currentData,
+                });
+                additionalParts.push({
+                  type: "data-step-confirmation-request",
+                  data: { request: result.request },
+                });
+              }
+            }
+
+            if (guestListUpdated) {
+              additionalParts.push({
+                type: "data-session-refresh",
+                data: { action: "updateGuestList" },
+              });
+            }
+
+            await writeTextAndSave(
+              writer,
+              db,
+              sessionId,
+              step,
+              deterministic.assistantText,
+              additionalParts
+            );
+
+            updateLangfuseTrace(telemetry?.traceClient, {
+              output: {
+                decisionPath: "deterministic",
+                deterministicHandled: true,
+                deterministicIntent,
+                deterministicActionCount: deterministic.actions.length,
+                modelTierUsed: "none",
+              },
+            });
+            return;
+          }
+
+          deterministicReason = deterministic.reason;
+        }
+
+        const forcedSilentFinishReason = debug?.forceSilentFinishReason;
+
         const tools = getWizardTools(step, {
           db,
           userId: user.id,
@@ -156,7 +287,6 @@ Previous confirmation summary: "${pendingConfirmationRequest.summary}"`;
           telemetry,
         });
 
-        // Build message history
         const userMessageForAI: SerializedUIMessage = {
           id: incomingMessage.id,
           role: "user",
@@ -170,7 +300,6 @@ Previous confirmation summary: "${pendingConfirmationRequest.summary}"`;
           userMessageForAI,
         ];
 
-        // For approvals, start fresh. For revisions, keep history.
         let messagesToConvert = confirmationDecision?.decision.type === "approve" && pendingConfirmationRequest
           ? []
           : allMessages;
@@ -179,59 +308,216 @@ Previous confirmation summary: "${pendingConfirmationRequest.summary}"`;
         const modelMessages = await convertToModelMessages(messagesToConvert as WizardMessage[]);
 
         console.log("[guests] Calling streamText with", Object.keys(tools).length, "tools");
+        const runAttempt = async ({
+          attempt,
+          attemptSystemPrompt,
+          generationName,
+          model,
+          modelName,
+          modelTier,
+        }: {
+          attempt: number;
+          attemptSystemPrompt: string;
+          generationName: string;
+          model: unknown;
+          modelName: string;
+          modelTier: "default" | "strong";
+        }) => {
+          if (forcedSilentFinishReason) {
+            const responseText = "";
+            const finishReason = forcedSilentFinishReason;
+            const rawFinishReason = forcedSilentFinishReason;
+            const usage = { outputTokens: 0 };
+            const toolCalls: unknown[] = [];
+            const toolResults: unknown[] = [];
 
-        const result = streamText({
-          model: defaultModel,
-          system: systemPrompt,
-          messages: modelMessages,
-          tools,
-          stopWhen: [stepCountIs(10), hasToolCall(confirmationToolName)],
-          experimental_telemetry: buildTelemetrySettings(
-            telemetry,
-            "wizard.guests.streamText",
-            {
+            return {
+              responseText,
+              finishReason,
+              rawFinishReason,
+              usage,
+              toolCalls,
+              toolResults,
+              isSilentCompletion: isSilentModelCompletion({
+                finishReason,
+                responseText,
+                usage,
+                toolCalls,
+                toolResults,
+              }),
+              responseMessageCount: 0,
+              modelTier,
+              forcedSilentCompletion: true,
+            };
+          }
+
+          const result = streamText({
+            model: model as never,
+            system: attemptSystemPrompt,
+            messages: modelMessages,
+            tools,
+            stopWhen: [stepCountIs(10), hasToolCall(confirmationToolName)],
+            experimental_telemetry: buildTelemetrySettings(
+              telemetry,
+              "wizard.guests.streamText",
+              {
+                messageCount: modelMessages.length,
+                toolCount: Object.keys(tools).length,
+                isRevisionRequest,
+                retryAttempt: attempt,
+                modelTier,
+              },
+              env
+            ),
+          });
+
+          const generation = createLangfuseGeneration(env, {
+            traceId: telemetry?.traceId,
+            name: generationName,
+            model: modelName,
+            input: {
+              systemPrompt: attemptSystemPrompt,
+              messages: modelMessages,
+              toolNames: Object.keys(tools),
               messageCount: modelMessages.length,
               toolCount: Object.keys(tools).length,
               isRevisionRequest,
+              retryAttempt: attempt,
+              modelTier,
             },
-            env
-          ),
-        });
+            metadata: {
+              step,
+              sessionId,
+              retryAttempt: attempt,
+              modelTier,
+            },
+          });
 
-        const generation = createLangfuseGeneration(env, {
-          traceId: telemetry?.traceId,
-          name: "wizard.guests.streamText",
-          model: "gemini-2.5-flash",
-          input: {
-            systemPrompt,
-            messages: modelMessages,
-            toolNames: Object.keys(tools),
-            messageCount: modelMessages.length,
-            toolCount: Object.keys(tools).length,
-            isRevisionRequest,
-          },
-          metadata: {
-            step,
-            sessionId,
-          },
-        });
-
-        writer.merge(result.toUIMessageStream());
-        const [response, responseText, finishReason, usage] = await Promise.all([
-          result.response,
-          result.text,
-          result.finishReason,
-          result.usage,
-        ]);
-        updateLangfuseGeneration(generation, {
-          output: {
+          writer.merge(result.toUIMessageStream());
+          const [response, responseText, finishReason, rawFinishReason, usage, toolCalls, toolResults] = await Promise.all([
+            result.response,
+            result.text,
+            result.finishReason,
+            result.rawFinishReason,
+            result.usage,
+            result.toolCalls,
+            result.toolResults,
+          ]);
+          const attemptIsSilentCompletion = isSilentModelCompletion({
             finishReason,
-            text: responseText,
-            responseMessages: response.messages,
-          },
-          usage,
+            responseText,
+            usage,
+            toolCalls,
+            toolResults,
+          });
+          updateLangfuseGeneration(generation, {
+            output: {
+              finishReason,
+              rawFinishReason,
+              text: responseText,
+              responseMessages: response.messages,
+              toolCallCount: toolCalls.length,
+              toolResultCount: toolResults.length,
+              isSilentCompletion: attemptIsSilentCompletion,
+              modelTier,
+            },
+            usage,
+          });
+          endLangfuseGeneration(generation);
+
+          return {
+            responseText,
+            finishReason,
+            rawFinishReason,
+            usage,
+            toolCalls,
+            toolResults,
+            isSilentCompletion: attemptIsSilentCompletion,
+            responseMessageCount: response.messages.length,
+            modelTier,
+            forcedSilentCompletion: false,
+          };
+        };
+
+        const firstAttempt = await runAttempt({
+          attempt: 1,
+          attemptSystemPrompt: systemPrompt,
+          generationName: "wizard.guests.streamText",
+          model: defaultModel,
+          modelName: "gemini-2.5-flash",
+          modelTier: "default",
         });
-        endLangfuseGeneration(generation);
+
+        let finalAttempt = firstAttempt;
+        let retryAttempted = false;
+        if (firstAttempt.isSilentCompletion) {
+          retryAttempted = true;
+          finalAttempt = await runAttempt({
+            attempt: 2,
+            attemptSystemPrompt: `${systemPrompt}
+
+<retry-instruction>
+Your previous attempt returned no visible response. Provide a concise user-visible reply, and call tools if needed.
+</retry-instruction>`,
+            generationName: "wizard.guests.streamText.retry",
+            model: strongModel,
+            modelName: env.WIZARD_STRONG_MODEL || "gemini-2.5-pro",
+            modelTier: "strong",
+          });
+        }
+
+        const retrySucceeded = retryAttempted && !finalAttempt.isSilentCompletion;
+        const fallbackMessage = finalAttempt.isSilentCompletion
+          ? getSilentCompletionFallbackMessage(finalAttempt.finishReason)
+          : undefined;
+        if (fallbackMessage) {
+          await writeTextAndSave(writer, db, sessionId, step, fallbackMessage);
+        }
+
+        updateLangfuseTrace(telemetry?.traceClient, {
+          output: {
+            decisionPath: "model",
+            deterministicHandled,
+            deterministicIntent,
+            deterministicReason,
+            modelTierUsed: retryAttempted ? "strong" : "default",
+            finishReason: finalAttempt.finishReason,
+            rawFinishReason: finalAttempt.rawFinishReason,
+            text: finalAttempt.responseText,
+            responseMessageCount: finalAttempt.responseMessageCount,
+            toolCallCount: finalAttempt.toolCalls.length,
+            toolResultCount: finalAttempt.toolResults.length,
+            isSilentCompletion: finalAttempt.isSilentCompletion,
+            fallbackMessage,
+            retryAttempted,
+            retrySucceeded,
+            forcedSilentCompletion: finalAttempt.forcedSilentCompletion,
+            attempts: [
+              {
+                attempt: 1,
+                modelTier: firstAttempt.modelTier,
+                finishReason: firstAttempt.finishReason,
+                rawFinishReason: firstAttempt.rawFinishReason,
+                isSilentCompletion: firstAttempt.isSilentCompletion,
+                toolCallCount: firstAttempt.toolCalls.length,
+                toolResultCount: firstAttempt.toolResults.length,
+                hasText: firstAttempt.responseText.trim().length > 0,
+              },
+              ...(retryAttempted
+                ? [{
+                    attempt: 2,
+                    modelTier: finalAttempt.modelTier,
+                    finishReason: finalAttempt.finishReason,
+                    rawFinishReason: finalAttempt.rawFinishReason,
+                    isSilentCompletion: finalAttempt.isSilentCompletion,
+                    toolCallCount: finalAttempt.toolCalls.length,
+                    toolResultCount: finalAttempt.toolResults.length,
+                    hasText: finalAttempt.responseText.trim().length > 0,
+                  }]
+                : []),
+            ],
+          },
+        });
       },
       generateId: () => crypto.randomUUID(),
       onFinish: createOnFinishHandler(db, sessionId, step, env, telemetry),

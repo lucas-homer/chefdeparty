@@ -1,5 +1,9 @@
 import { describe, expect, it, vi } from "vitest";
-import { sanitizeLangfusePayload, updateLangfuseGeneration } from "./langfuse";
+import {
+  sanitizeLangfusePayload,
+  updateLangfuseGeneration,
+  updateLangfuseTrace,
+} from "./langfuse";
 
 describe("langfuse helpers", () => {
   describe("sanitizeLangfusePayload", () => {
@@ -50,6 +54,29 @@ describe("langfuse helpers", () => {
       updateLangfuseGeneration(generation, {
         output: {
           image: `data:image/jpeg;base64,${"b".repeat(120)}`,
+        },
+      });
+
+      expect(update).toHaveBeenCalledTimes(1);
+      expect(update.mock.calls[0][0]).toMatchObject({
+        output: {
+          image: expect.stringContaining("[omitted image data"),
+        },
+      });
+    });
+  });
+
+  describe("updateLangfuseTrace", () => {
+    it("sends sanitized payloads to trace updates", () => {
+      const update = vi.fn();
+      const trace = {
+        id: "trace_123",
+        update,
+      };
+
+      updateLangfuseTrace(trace, {
+        output: {
+          image: `data:image/png;base64,${"z".repeat(120)}`,
         },
       });
 

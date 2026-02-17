@@ -90,6 +90,16 @@ export function shouldRefreshSessionFromToolPart(part: WizardMessagePart): boole
   return typeof action === "string" && SESSION_REFRESH_ACTIONS.has(action);
 }
 
+function shouldRefreshSessionFromDataPart(part: WizardMessagePart): boolean {
+  if (getPartType(part) !== "data-session-refresh") return false;
+  const data = (part as { data?: unknown }).data;
+  if (!isObject(data)) return false;
+  const action = data.action;
+  return typeof action === "string" && SESSION_REFRESH_ACTIONS.has(action);
+}
+
 export function shouldRefreshSessionFromAssistantMessage(message: UIMessage): boolean {
-  return message.parts.some(shouldRefreshSessionFromToolPart);
+  return message.parts.some((part) => (
+    shouldRefreshSessionFromToolPart(part) || shouldRefreshSessionFromDataPart(part)
+  ));
 }

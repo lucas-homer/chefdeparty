@@ -98,6 +98,8 @@ export function createMockEnv(overrides: Partial<Env> = {}): Env {
     APP_URL: "http://test.local",
     TAVILY_API_KEY: "mock-tavily-key",
     ADMIN_EMAILS: "admin@test.com",
+    WIZARD_STRONG_MODEL: "gemini-2.5-pro",
+    WIZARD_STEP12_DETERMINISTIC_ENABLED: "true",
     ...overrides,
   };
 }

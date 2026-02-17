@@ -1,5 +1,11 @@
 import type { SerializedUIMessage } from "../../../drizzle/schema";
-import { buildTelemetrySettings, filterMessagesForAI, stripLargeDataForStorage } from "./utils";
+import {
+  buildTelemetrySettings,
+  filterMessagesForAI,
+  getSilentCompletionFallbackMessage,
+  isSilentModelCompletion,
+  stripLargeDataForStorage,
+} from "./utils";
 
 function buildMessage(
   role: "user" | "assistant",
@@ -73,6 +79,26 @@ describe("party-wizard handler utils", () => {
         { type: "text", text: "What dish is this?" },
       ]);
     });
+
+    it("removes legacy dynamic-tool parts that are invalid model input", () => {
+      const messages = [
+        buildMessage("assistant", [
+          { type: "text", text: "Added Chelsea and Bam to the guest list." },
+          {
+            type: "dynamic-tool",
+            state: "output-available",
+            output: { action: "updateGuestList" },
+          },
+        ]),
+      ];
+
+      const filtered = filterMessagesForAI(messages);
+
+      expect(filtered).toHaveLength(1);
+      expect(filtered[0].parts).toEqual([
+        { type: "text", text: "Added Chelsea and Bam to the guest list." },
+      ]);
+    });
   });
 
   describe("buildTelemetrySettings", () => {
@@ -94,6 +120,51 @@ describe("party-wizard handler utils", () => {
         recordOutputs: true,
         functionId: "wizard.menu.streamText",
       });
+    });
+  });
+
+  describe("isSilentModelCompletion", () => {
+    it("returns true when model ends with no text and no tool activity", () => {
+      const isSilent = isSilentModelCompletion({
+        finishReason: "other",
+        responseText: "",
+        toolCalls: [],
+        toolResults: [],
+      });
+
+      expect(isSilent).toBe(true);
+    });
+
+    it("returns false when text is present", () => {
+      const isSilent = isSilentModelCompletion({
+        finishReason: "stop",
+        responseText: "Anyone else to add?",
+        toolCalls: [],
+        toolResults: [],
+      });
+
+      expect(isSilent).toBe(false);
+    });
+
+    it("returns false when tool calls exist even without text", () => {
+      const isSilent = isSilentModelCompletion({
+        finishReason: "tool-calls",
+        responseText: "",
+        toolCalls: [{ type: "tool-call", toolName: "addGuest" }],
+        toolResults: [],
+      });
+
+      expect(isSilent).toBe(false);
+    });
+  });
+
+  describe("getSilentCompletionFallbackMessage", () => {
+    it("returns content-filter specific guidance", () => {
+      expect(getSilentCompletionFallbackMessage("content-filter")).toContain("filtered");
+    });
+
+    it("returns a generic retry message for provider interruptions", () => {
+      expect(getSilentCompletionFallbackMessage("other")).toContain("temporary issue");
     });
   });
 });

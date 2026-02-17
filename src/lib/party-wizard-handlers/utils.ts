@@ -19,7 +19,7 @@ import type { WizardMessage, StepConfirmationRequest } from "../wizard-message-t
 import type { WizardStep, WizardState } from "../wizard-schemas";
 import type { Env } from "../../index";
 import type { createDb } from "../db";
-import { flushLangfuse } from "../langfuse";
+import { flushLangfuse, type LangfuseTraceClient } from "../langfuse";
 import { flushLangfuseTelemetry, getLangfuseTelemetryTracer } from "../otel";
 
 // ============================================
@@ -39,6 +39,15 @@ export interface WizardTelemetryContext {
   userId: string;
   step: WizardStep;
   environment: string;
+  traceClient?: LangfuseTraceClient;
+}
+
+interface SilentModelCompletionInput {
+  finishReason?: string;
+  responseText?: string;
+  usage?: { outputTokens?: unknown } | null;
+  toolCalls?: unknown[];
+  toolResults?: unknown[];
 }
 
 export interface HandlerContext {
@@ -61,6 +70,9 @@ export interface HandlerContext {
   pendingConfirmationRequest?: StepConfirmationRequest;
   userRecipes?: Array<{ id: string; name: string; description: string | null }>;
   telemetry?: WizardTelemetryContext;
+  debug?: {
+    forceSilentFinishReason?: string;
+  };
 }
 
 export type StepHandler = (ctx: HandlerContext) => Promise<Response>;
@@ -121,6 +133,111 @@ export function stripLargeDataForStorage(parts: Array<Record<string, unknown>>):
     }
     return part;
   });
+}
+
+function getTrimmedString(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : null;
+}
+
+function normalizeTokenCount(value: unknown): number | undefined {
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return value;
+  }
+
+  if (
+    typeof value === "object" &&
+    value !== null &&
+    "intValue" in value &&
+    typeof (value as { intValue?: unknown }).intValue === "number"
+  ) {
+    return (value as { intValue: number }).intValue;
+  }
+
+  return undefined;
+}
+
+function hasRenderableToolOutput(part: Record<string, unknown>): boolean {
+  const partType = String(part.type || "");
+  const isToolPart = partType.startsWith("tool-") || partType === "dynamic-tool";
+  if (!isToolPart) return false;
+
+  const output = (part.output ?? part.result) as Record<string, unknown> | undefined;
+  if (output) {
+    if (getTrimmedString(output.message)) return true;
+    if (getTrimmedString(output.error)) return true;
+  }
+
+  if (part.state === "output-error" && getTrimmedString(part.errorText)) {
+    return true;
+  }
+
+  return false;
+}
+
+export function hasRenderableAssistantParts(parts: Array<Record<string, unknown>>): boolean {
+  return parts.some((part) => {
+    const partType = String(part.type || "");
+
+    if (partType === "text" && getTrimmedString(part.text)) {
+      return true;
+    }
+
+    if (
+      partType === "data-session-refresh" ||
+      partType === "data-step-confirmation-request" ||
+      partType === "data-step-confirmation-decision" ||
+      partType === "data-step-confirmed" ||
+      partType === "data-recipe-extracted" ||
+      partType === "data-timeline-generated"
+    ) {
+      return true;
+    }
+
+    if (partType === "tool-result") {
+      const result = part.result as Record<string, unknown> | undefined;
+      if (result && (getTrimmedString(result.message) || getTrimmedString(result.error))) {
+        return true;
+      }
+    }
+
+    return hasRenderableToolOutput(part);
+  });
+}
+
+export function isSilentModelCompletion({
+  responseText,
+  usage,
+  toolCalls,
+  toolResults,
+}: SilentModelCompletionInput): boolean {
+  const hasText = Boolean(getTrimmedString(responseText));
+  if (hasText) return false;
+
+  const hasToolActivity = (toolCalls?.length || 0) > 0 || (toolResults?.length || 0) > 0;
+  if (hasToolActivity) return false;
+
+  const outputTokens = normalizeTokenCount(usage?.outputTokens);
+  if (outputTokens !== undefined) {
+    return outputTokens <= 0;
+  }
+
+  // If no text/tool activity was produced and output token counts are unavailable,
+  // still treat this as silent so we can provide a fallback.
+  return true;
+}
+
+export function getSilentCompletionFallbackMessage(finishReason?: string): string {
+  if (finishReason === "content-filter") {
+    return "I could not send a response because it was filtered. Please rephrase and I will continue.";
+  }
+
+  if (finishReason === "length") {
+    return "My response got cut off before I could send it. Please send \"continue\" and I will pick up from here.";
+  }
+
+  return "I hit a temporary issue and did not send a usable response. I still received your message. Please send \"continue\" and I will keep going.";
 }
 
 // ============================================
@@ -220,7 +337,13 @@ export async function createWrappedModels(env: Env) {
     addToolInputExamplesMiddleware,
   } = await import("ai");
   const { createAI } = await import("../ai");
-  const { defaultModel: rawDefaultModel, visionModel: rawVisionModel } = createAI(env.GOOGLE_GENERATIVE_AI_API_KEY);
+  const {
+    defaultModel: rawDefaultModel,
+    visionModel: rawVisionModel,
+    strongModel: rawStrongModel,
+  } = createAI(env.GOOGLE_GENERATIVE_AI_API_KEY, {
+    strongModel: env.WIZARD_STRONG_MODEL,
+  });
 
   const defaultModel = wrapLanguageModel({
     model: rawDefaultModel,
@@ -230,8 +353,28 @@ export async function createWrappedModels(env: Env) {
     model: rawVisionModel,
     middleware: addToolInputExamplesMiddleware(),
   });
+  const strongModel = wrapLanguageModel({
+    model: rawStrongModel,
+    middleware: addToolInputExamplesMiddleware(),
+  });
 
-  return { defaultModel, visionModel, rawDefaultModel, rawVisionModel };
+  return {
+    defaultModel,
+    visionModel,
+    strongModel,
+    rawDefaultModel,
+    rawVisionModel,
+    rawStrongModel,
+  };
+}
+
+export function isStep12DeterministicEnabled(env: Env): boolean {
+  const explicit = env.WIZARD_STEP12_DETERMINISTIC_ENABLED;
+  if (explicit !== undefined) {
+    return /^(1|true|yes|on)$/i.test(explicit.trim());
+  }
+
+  return env.NODE_ENV !== "production";
 }
 
 // ============================================
@@ -281,6 +424,12 @@ export function filterMessagesForAI(
     // Remove storage placeholders for stripped binary content before AI conversion.
     // These placeholders are useful for persistence, but they are not valid model inputs.
     const sanitizedParts = parts.filter((part) => {
+      // Legacy deterministic paths stored `dynamic-tool` parts that are not valid
+      // model inputs (missing toolName/toolCallId). Drop them before conversion.
+      if (part.type === "dynamic-tool") {
+        return false;
+      }
+
       if (part.type === "image") {
         const hasImageData = typeof part.image === "string" && part.image.length > 0;
         const isStrippedImagePlaceholder = part.imageStripped === true || !hasImageData;
@@ -340,8 +489,8 @@ export function createOnFinishHandler(
       return { ...part };
     });
 
-    // Only save if the message has meaningful content
-    if (responseParts.length === 0) {
+    // Only save messages that have user-visible content.
+    if (responseParts.length === 0 || !hasRenderableAssistantParts(responseParts)) {
       return;
     }
 
@@ -462,6 +611,11 @@ export async function writeTextAndSave(
   writer.write({ type: "text-start", id: textId });
   writer.write({ type: "text-delta", id: textId, delta: text });
   writer.write({ type: "text-end", id: textId });
+  if (additionalParts) {
+    for (const part of additionalParts) {
+      writer.write(part as never);
+    }
+  }
 
   const parts: Array<Record<string, unknown>> = [
     { type: "text", text },

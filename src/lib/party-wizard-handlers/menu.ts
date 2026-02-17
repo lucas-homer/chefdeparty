@@ -24,12 +24,16 @@ import {
   buildTelemetrySettings,
   getConfirmationToolName,
   getRevisionToolInstructions,
+  getSilentCompletionFallbackMessage,
   hashImageData,
+  isSilentModelCompletion,
   saveAssistantMessage,
+  writeTextAndSave,
 } from "./utils";
 import {
   createLangfuseGeneration,
   endLangfuseGeneration,
+  updateLangfuseTrace,
   updateLangfuseGeneration,
 } from "../langfuse";
 
@@ -48,6 +52,7 @@ export async function handleMenuStep(ctx: HandlerContext): Promise<Response> {
     pendingConfirmationRequest,
     userRecipes = [],
     telemetry,
+    debug,
   } = ctx;
 
   // Dynamically import AI dependencies
@@ -150,6 +155,15 @@ Previous confirmation summary: "${pendingConfirmationRequest.summary}"`;
               },
             });
 
+            updateLangfuseTrace(telemetry?.traceClient, {
+              output: {
+                event: "step-confirmed",
+                step: request.step,
+                nextStep,
+                requestId: request.id,
+              },
+            });
+
             // ========================================
             // WORKFLOW: Auto-generate timeline when entering timeline step
             // ========================================
@@ -230,6 +244,31 @@ Previous confirmation summary: "${pendingConfirmationRequest.summary}"`;
 
             return;
           }
+        }
+
+        const forcedSilentFinishReason = debug?.forceSilentFinishReason;
+        if (forcedSilentFinishReason) {
+          const isSilentCompletion = isSilentModelCompletion({
+            finishReason: forcedSilentFinishReason,
+            responseText: "",
+            usage: { outputTokens: 0 },
+            toolCalls: [],
+            toolResults: [],
+          });
+          const fallbackMessage = getSilentCompletionFallbackMessage(forcedSilentFinishReason);
+          await writeTextAndSave(writer, db, sessionId, step, fallbackMessage);
+          updateLangfuseTrace(telemetry?.traceClient, {
+            output: {
+              finishReason: forcedSilentFinishReason,
+              text: "",
+              toolCallCount: 0,
+              toolResultCount: 0,
+              isSilentCompletion,
+              fallbackMessage,
+              forcedSilentCompletion: true,
+            },
+          });
+          return;
         }
 
         // ========================================
@@ -645,61 +684,163 @@ What else would you like to add, or are you ready to finalize the menu?`;
         const modelMessages = await convertToModelMessages(messagesToConvert as WizardMessage[]);
 
         console.log("[menu] Calling streamText with", Object.keys(tools).length, "tools");
+        const runAttempt = async ({
+          attempt,
+          attemptSystemPrompt,
+          generationName,
+        }: {
+          attempt: number;
+          attemptSystemPrompt: string;
+          generationName: string;
+        }) => {
+          const result = streamText({
+            model: hasImage ? visionModel : defaultModel,
+            system: attemptSystemPrompt,
+            messages: modelMessages,
+            tools,
+            stopWhen: [stepCountIs(10), hasToolCall(confirmationToolName)],
+            experimental_telemetry: buildTelemetrySettings(
+              telemetry,
+              "wizard.menu.streamText",
+              {
+                messageCount: modelMessages.length,
+                toolCount: Object.keys(tools).length,
+                hasImage,
+                isRevisionRequest,
+                retryAttempt: attempt,
+              },
+              env
+            ),
+          });
 
-        const result = streamText({
-          model: hasImage ? visionModel : defaultModel,
-          system: systemPrompt,
-          messages: modelMessages,
-          tools,
-          stopWhen: [stepCountIs(10), hasToolCall(confirmationToolName)],
-          experimental_telemetry: buildTelemetrySettings(
-            telemetry,
-            "wizard.menu.streamText",
-            {
+          const generation = createLangfuseGeneration(env, {
+            traceId: telemetry?.traceId,
+            name: generationName,
+            model: hasImage ? "gemini-2.5-flash-vision" : "gemini-2.5-flash",
+            input: {
+              systemPrompt: attemptSystemPrompt,
+              messages: modelMessages,
+              toolNames: Object.keys(tools),
               messageCount: modelMessages.length,
               toolCount: Object.keys(tools).length,
               hasImage,
               isRevisionRequest,
+              retryAttempt: attempt,
             },
-            env
-          ),
-        });
+            metadata: {
+              step,
+              sessionId,
+              retryAttempt: attempt,
+            },
+          });
 
-        const generation = createLangfuseGeneration(env, {
-          traceId: telemetry?.traceId,
-          name: "wizard.menu.streamText",
-          model: hasImage ? "gemini-2.5-flash-vision" : "gemini-2.5-flash",
-          input: {
-            systemPrompt,
-            messages: modelMessages,
-            toolNames: Object.keys(tools),
-            messageCount: modelMessages.length,
-            toolCount: Object.keys(tools).length,
-            hasImage,
-            isRevisionRequest,
-          },
-          metadata: {
-            step,
-            sessionId,
-          },
-        });
-
-        writer.merge(result.toUIMessageStream());
-        const [response, responseText, finishReason, usage] = await Promise.all([
-          result.response,
-          result.text,
-          result.finishReason,
-          result.usage,
-        ]);
-        updateLangfuseGeneration(generation, {
-          output: {
+          writer.merge(result.toUIMessageStream());
+          const [response, responseText, finishReason, rawFinishReason, usage, toolCalls, toolResults] = await Promise.all([
+            result.response,
+            result.text,
+            result.finishReason,
+            result.rawFinishReason,
+            result.usage,
+            result.toolCalls,
+            result.toolResults,
+          ]);
+          const attemptIsSilentCompletion = isSilentModelCompletion({
             finishReason,
-            text: responseText,
-            responseMessages: response.messages,
-          },
-          usage,
+            responseText,
+            usage,
+            toolCalls,
+            toolResults,
+          });
+          updateLangfuseGeneration(generation, {
+            output: {
+              finishReason,
+              rawFinishReason,
+              text: responseText,
+              responseMessages: response.messages,
+              toolCallCount: toolCalls.length,
+              toolResultCount: toolResults.length,
+              isSilentCompletion: attemptIsSilentCompletion,
+            },
+            usage,
+          });
+          endLangfuseGeneration(generation);
+
+          return {
+            response,
+            responseText,
+            finishReason,
+            rawFinishReason,
+            usage,
+            toolCalls,
+            toolResults,
+            isSilentCompletion: attemptIsSilentCompletion,
+          };
+        };
+
+        const firstAttempt = await runAttempt({
+          attempt: 1,
+          attemptSystemPrompt: systemPrompt,
+          generationName: "wizard.menu.streamText",
         });
-        endLangfuseGeneration(generation);
+
+        let finalAttempt = firstAttempt;
+        let retryAttempted = false;
+        if (firstAttempt.isSilentCompletion) {
+          retryAttempted = true;
+          finalAttempt = await runAttempt({
+            attempt: 2,
+            attemptSystemPrompt: `${systemPrompt}
+
+<retry-instruction>
+Your previous attempt returned no visible response. Provide a concise user-visible reply, and call tools if needed.
+</retry-instruction>`,
+            generationName: "wizard.menu.streamText.retry",
+          });
+        }
+
+        const retrySucceeded = retryAttempted && !finalAttempt.isSilentCompletion;
+        const fallbackMessage = finalAttempt.isSilentCompletion
+          ? getSilentCompletionFallbackMessage(finalAttempt.finishReason)
+          : undefined;
+        if (fallbackMessage) {
+          await writeTextAndSave(writer, db, sessionId, step, fallbackMessage);
+        }
+        updateLangfuseTrace(telemetry?.traceClient, {
+          output: {
+            finishReason: finalAttempt.finishReason,
+            rawFinishReason: finalAttempt.rawFinishReason,
+            text: finalAttempt.responseText,
+            responseMessageCount: finalAttempt.response.messages.length,
+            toolCallCount: finalAttempt.toolCalls.length,
+            toolResultCount: finalAttempt.toolResults.length,
+            isSilentCompletion: finalAttempt.isSilentCompletion,
+            fallbackMessage,
+            retryAttempted,
+            retrySucceeded,
+            attempts: [
+              {
+                attempt: 1,
+                finishReason: firstAttempt.finishReason,
+                rawFinishReason: firstAttempt.rawFinishReason,
+                isSilentCompletion: firstAttempt.isSilentCompletion,
+                toolCallCount: firstAttempt.toolCalls.length,
+                toolResultCount: firstAttempt.toolResults.length,
+                hasText: firstAttempt.responseText.trim().length > 0,
+              },
+              ...(retryAttempted
+                ? [{
+                    attempt: 2,
+                    finishReason: finalAttempt.finishReason,
+                    rawFinishReason: finalAttempt.rawFinishReason,
+                    isSilentCompletion: finalAttempt.isSilentCompletion,
+                    toolCallCount: finalAttempt.toolCalls.length,
+                    toolResultCount: finalAttempt.toolResults.length,
+                    hasText: finalAttempt.responseText.trim().length > 0,
+                  }]
+                : []),
+            ],
+          },
+        });
       },
       generateId: () => crypto.randomUUID(),
       onFinish: createOnFinishHandler(db, sessionId, step, env, telemetry),

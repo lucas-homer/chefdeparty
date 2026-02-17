@@ -1,13 +1,19 @@
 import { createGoogleGenerativeAI } from "@ai-sdk/google";
 
+type CreateAIOptions = {
+  strongModel?: string;
+};
+
 // Create a Google AI provider with the API key from environment
-export function createAI(apiKey: string) {
+export function createAI(apiKey: string, options?: CreateAIOptions) {
   const google = createGoogleGenerativeAI({ apiKey });
+  const strongModelName = options?.strongModel || "gemini-2.5-pro";
 
   return {
     defaultModel: google("gemini-2.5-flash"),
     visionModel: google("gemini-2.5-flash"),
     fastModel: google("gemini-2.5-flash"),
+    strongModel: google(strongModelName),
   };
 }
 
@@ -17,3 +23,4 @@ import { google } from "@ai-sdk/google";
 export const defaultModel = google("gemini-2.5-flash");
 export const visionModel = google("gemini-2.5-flash");
 export const fastModel = google("gemini-2.5-flash");
+export const strongModel = google("gemini-2.5-pro");

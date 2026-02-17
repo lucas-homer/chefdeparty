@@ -56,6 +56,17 @@ describe("wizard-message-parts", () => {
     expect(shouldRefreshSessionFromAssistantMessage(message)).toBe(false);
   });
 
+  it("detects session refresh requirement from data-session-refresh parts", () => {
+    const message = buildAssistantMessage([
+      {
+        type: "data-session-refresh",
+        data: { action: "updateGuestList" },
+      },
+    ]);
+
+    expect(shouldRefreshSessionFromAssistantMessage(message)).toBe(true);
+  });
+
   it("extracts a visible message from tool output-error parts", () => {
     const message = buildAssistantMessage([
       {

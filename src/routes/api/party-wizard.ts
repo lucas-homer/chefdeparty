@@ -48,6 +48,15 @@ type Variables = {
 
 type AppContext = { Bindings: Env; Variables: Variables };
 
+const ALLOWED_DEBUG_SILENT_FINISH_REASONS = new Set([
+  "length",
+  "error",
+  "stop",
+  "content-filter",
+  "tool-calls",
+  "other",
+]);
+
 // Schema for step change request
 const stepChangeSchema = z.object({
   step: wizardStepSchema,
@@ -256,6 +265,19 @@ const partyWizardRoutes = new Hono<AppContext>()
     }
 
     const step = session.currentStep as WizardStep;
+    const debugSilentFinishReasonHeader = c.req.header("x-wizard-debug-silent-finish-reason");
+    const requestHost = new URL(c.req.url).hostname;
+    const isLocalDebugRequest =
+      c.env.NODE_ENV === "test" ||
+      /localhost|127\.0\.0\.1/i.test(c.env.APP_URL || "") ||
+      requestHost === "localhost" ||
+      requestHost === "127.0.0.1";
+    const forceSilentFinishReason =
+      isLocalDebugRequest &&
+      debugSilentFinishReasonHeader &&
+      ALLOWED_DEBUG_SILENT_FINISH_REASONS.has(debugSilentFinishReasonHeader)
+        ? debugSilentFinishReasonHeader
+        : undefined;
 
     // Load existing messages for this step
     const existingMessages = await loadStepMessages(db, sessionId, step);
@@ -372,6 +394,12 @@ const partyWizardRoutes = new Hono<AppContext>()
             userId: user.id,
             step,
             environment: getLangfuseEnvironmentName(c.env),
+            traceClient: langfuseTrace,
+          }
+        : undefined,
+      debug: forceSilentFinishReason
+        ? {
+            forceSilentFinishReason,
           }
         : undefined,
     };
