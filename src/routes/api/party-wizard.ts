@@ -41,6 +41,7 @@ import {
   createLangfuseTrace,
   getLangfuseEnvironmentName,
 } from "../../lib/langfuse";
+import { normalizeWizardCompletePayload } from "../../lib/wizard-complete-normalization";
 
 type Variables = {
   db: ReturnType<typeof createDb>;
@@ -61,6 +62,11 @@ const ALLOWED_DEBUG_SILENT_FINISH_REASONS = new Set([
 const stepChangeSchema = z.object({
   step: wizardStepSchema,
 });
+
+const wizardCompletePayloadSchema = z.preprocess(
+  normalizeWizardCompletePayload,
+  wizardCompleteRequestSchema.extend({ sessionId: z.string().uuid().optional() })
+);
 
 const partyWizardRoutes = new Hono<AppContext>()
   .use("*", requireAuth)
@@ -409,7 +415,7 @@ const partyWizardRoutes = new Hono<AppContext>()
   })
 
   // POST /api/parties/wizard/complete - Create party with all entities
-  .post("/complete", zValidator("json", wizardCompleteRequestSchema.extend({ sessionId: z.string().uuid().optional() })), async (c) => {
+  .post("/complete", zValidator("json", wizardCompletePayloadSchema), async (c) => {
     const user = getUser(c);
     if (!user) return c.json({ error: "Unauthorized" }, 401);
 

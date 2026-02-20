@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { addGuestToolSchema, confirmPartyInfoToolSchema } from "./wizard-schemas";
+import { addGuestToolSchema, confirmPartyInfoToolSchema, guestDataSchema } from "./wizard-schemas";
 
 describe("confirmPartyInfoToolSchema", () => {
   it("accepts natural-language date input via dateTimeInput", () => {
@@ -45,5 +45,21 @@ describe("addGuestToolSchema", () => {
     });
 
     expect(result.success).toBe(true);
+  });
+});
+
+describe("guestDataSchema", () => {
+  it("accepts name-only guests for wizard flow", () => {
+    const result = guestDataSchema.safeParse({
+      name: "Chelsea",
+    });
+
+    expect(result.success).toBe(true);
+  });
+
+  it("rejects completely empty guest entries", () => {
+    const result = guestDataSchema.safeParse({});
+
+    expect(result.success).toBe(false);
   });
 });
