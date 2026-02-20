@@ -75,7 +75,7 @@ export function getLangfuseTelemetryTracer(env: OTelBindings): Tracer | undefine
   }
 
   const tracer = trace.getTracer("chefdeparty.ai");
-  state.provider = provider;
+  state.provider = didRegisterGlobalProvider ? provider : undefined;
   state.tracer = tracer;
   state.initializationKey = initializationKey;
   return tracer;

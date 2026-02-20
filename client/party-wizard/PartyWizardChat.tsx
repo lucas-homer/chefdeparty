@@ -367,7 +367,16 @@ function PartyWizardChatInner({
       });
 
       if (!response.ok) {
-        throw new Error("Failed to create party");
+        let message = "Failed to create party";
+        try {
+          const errorBody = await response.json() as { error?: string };
+          if (errorBody?.error) {
+            message = errorBody.error;
+          }
+        } catch {
+          // Ignore JSON parse failures and use the fallback message.
+        }
+        throw new Error(message);
       }
 
       const data = await response.json();

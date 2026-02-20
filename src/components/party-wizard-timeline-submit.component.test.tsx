@@ -1,6 +1,6 @@
 /** @vitest-environment jsdom */
 
-import { render, screen } from "@testing-library/react";
+import { act, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
 import { PartyWizardChat } from "../../client/party-wizard/PartyWizardChat";
@@ -8,6 +8,7 @@ import type { TimelineTaskData } from "../../client/party-wizard/types";
 
 const mockSendMessage = vi.fn();
 const mockSetMessages = vi.fn();
+let onFinishHandler: ((event: { message: unknown }) => void) | undefined;
 
 const timeline: TimelineTaskData[] = [
   {
@@ -43,13 +44,16 @@ const initialMessages = [
 ];
 
 vi.mock("@ai-sdk/react", () => ({
-  useChat: () => ({
-    messages: initialMessages,
-    status: "ready",
-    sendMessage: mockSendMessage,
-    error: null,
-    setMessages: mockSetMessages,
-  }),
+  useChat: (options?: { onFinish?: (event: { message: unknown }) => void }) => {
+    onFinishHandler = options?.onFinish;
+    return {
+      messages: initialMessages,
+      status: "ready",
+      sendMessage: mockSendMessage,
+      error: null,
+      setMessages: mockSetMessages,
+    };
+  },
 }));
 
 vi.mock("../../client/party-wizard/useWizardState", () => ({
@@ -59,7 +63,10 @@ vi.mock("../../client/party-wizard/useWizardState", () => ({
       userId: "user-1",
       currentStep: "timeline",
       furthestStepIndex: 3,
-      partyInfo: null,
+      partyInfo: {
+        name: "Sunday Post-Run Meal",
+        dateTime: new Date().toISOString(),
+      },
       guestList: [],
       menuPlan: null,
       timeline,
@@ -103,6 +110,8 @@ describe("PartyWizardChat timeline submit", () => {
   beforeEach(() => {
     mockSendMessage.mockClear();
     mockSetMessages.mockClear();
+    onFinishHandler = undefined;
+    vi.restoreAllMocks();
   });
 
   it("sends timeline adjustment feedback when submit is clicked", async () => {
@@ -116,5 +125,37 @@ describe("PartyWizardChat timeline submit", () => {
     expect(mockSendMessage).toHaveBeenCalledWith({
       text: expect.stringContaining("Remove these tasks"),
     });
+  });
+
+  it("surfaces API error details when party creation fails", async () => {
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(JSON.stringify({ error: "Invalid wizard completion payload" }), {
+        status: 400,
+        headers: { "Content-Type": "application/json" },
+      })
+    );
+
+    render(<PartyWizardChat />);
+
+    expect(onFinishHandler).toBeDefined();
+    await act(async () => {
+      onFinishHandler?.({
+        message: {
+          id: "assistant-complete",
+          role: "assistant",
+          parts: [
+            {
+              type: "data-step-confirmed",
+              data: { nextStep: "complete" },
+            },
+          ],
+        },
+      });
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText("Invalid wizard completion payload")).toBeVisible();
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 });

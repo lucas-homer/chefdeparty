@@ -39,8 +39,12 @@ import {
 } from "../../lib/party-wizard-handlers";
 import {
   createLangfuseTrace,
+  flushLangfuse,
   getLangfuseEnvironmentName,
+  updateLangfuseTrace,
 } from "../../lib/langfuse";
+import { normalizeWizardCompletePayload } from "../../lib/wizard-complete-normalization";
+import { flushLangfuseTelemetry } from "../../lib/otel";
 
 type Variables = {
   db: ReturnType<typeof createDb>;
@@ -61,6 +65,75 @@ const ALLOWED_DEBUG_SILENT_FINISH_REASONS = new Set([
 const stepChangeSchema = z.object({
   step: wizardStepSchema,
 });
+
+const wizardCompletePayloadSchema = z.preprocess(
+  normalizeWizardCompletePayload,
+  wizardCompleteRequestSchema.extend({ sessionId: z.string().uuid().optional() })
+);
+
+function getErrorTelemetryPayload(error: unknown): Record<string, unknown> {
+  if (error instanceof Error) {
+    return {
+      name: error.name,
+      message: error.message,
+      stack: error.stack,
+    };
+  }
+
+  return {
+    message: String(error),
+  };
+}
+
+function getSessionIdFromUnknown(value: unknown): string | undefined {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return undefined;
+  }
+
+  const candidate = (value as { sessionId?: unknown }).sessionId;
+  return typeof candidate === "string" ? candidate : undefined;
+}
+
+const completeValidationMiddleware = zValidator(
+  "json",
+  wizardCompletePayloadSchema,
+  async (result, c) => {
+    if (result.success) return;
+
+    const user = getUser(c);
+    const sessionId = getSessionIdFromUnknown(result.data);
+    const validationTrace = createLangfuseTrace(c.env, {
+      name: "party-wizard.complete",
+      sessionId,
+      userId: user?.id,
+      input: result.data,
+      output: {
+        error: "Invalid wizard completion payload",
+        details: result.error.errors,
+      },
+      metadata: {
+        validationFailed: true,
+      },
+      tags: ["step:complete", "event:validation-failed"],
+    });
+
+    updateLangfuseTrace(validationTrace, {
+      output: {
+        error: "Invalid wizard completion payload",
+        details: result.error.errors,
+      },
+    });
+    await flushLangfuse(c.env);
+
+    return c.json(
+      {
+        error: "Invalid wizard completion payload",
+        details: result.error.errors,
+      },
+      400
+    );
+  }
+);
 
 const partyWizardRoutes = new Hono<AppContext>()
   .use("*", requireAuth)
@@ -405,16 +478,46 @@ const partyWizardRoutes = new Hono<AppContext>()
     };
 
     // Delegate to step handler
-    return handleWizardStep(ctx);
+    try {
+      return await handleWizardStep(ctx);
+    } catch (error) {
+      updateLangfuseTrace(langfuseTrace, {
+        output: {
+          error: getErrorTelemetryPayload(error),
+          step,
+          sessionId,
+          status: "failed",
+        },
+      });
+      await Promise.all([flushLangfuse(c.env), flushLangfuseTelemetry()]);
+      throw error;
+    }
   })
 
   // POST /api/parties/wizard/complete - Create party with all entities
-  .post("/complete", zValidator("json", wizardCompleteRequestSchema.extend({ sessionId: z.string().uuid().optional() })), async (c) => {
+  .post("/complete", completeValidationMiddleware, async (c) => {
     const user = getUser(c);
     if (!user) return c.json({ error: "Unauthorized" }, 401);
 
     const db = c.get("db");
     const { partyInfo, guestList, menuPlan, timeline, sessionId } = c.req.valid("json");
+    const completeTrace = createLangfuseTrace(c.env, {
+      name: "party-wizard.complete",
+      sessionId,
+      userId: user.id,
+      input: {
+        sessionId,
+        partyInfo,
+        guestCount: guestList.length,
+        existingRecipeCount: menuPlan.existingRecipes.length,
+        newRecipeCount: menuPlan.newRecipes.length,
+        timelineTaskCount: timeline.length,
+      },
+      metadata: {
+        step: "complete",
+      },
+      tags: ["step:complete"],
+    });
 
     try {
       // 1. Create the party
@@ -568,7 +671,7 @@ const partyWizardRoutes = new Hono<AppContext>()
           );
       }
 
-      return c.json({
+      const responseBody = {
         success: true,
         partyId: newParty.id,
         partyUrl: `/parties/${newParty.id}`,
@@ -578,10 +681,30 @@ const partyWizardRoutes = new Hono<AppContext>()
           menuItemsAdded: menuPlan.existingRecipes.length + createdRecipes.length,
           tasksCreated: createdTasks.length,
         },
+      };
+
+      updateLangfuseTrace(completeTrace, {
+        output: {
+          status: "success",
+          partyId: responseBody.partyId,
+          partyUrl: responseBody.partyUrl,
+          summary: responseBody.summary,
+        },
       });
+
+      return c.json(responseBody);
     } catch (error) {
       console.error("Error creating party from wizard:", error);
+      updateLangfuseTrace(completeTrace, {
+        output: {
+          status: "failed",
+          error: getErrorTelemetryPayload(error),
+          sessionId,
+        },
+      });
       return c.json({ error: "Failed to create party" }, 500);
+    } finally {
+      await flushLangfuse(c.env);
     }
   })
 

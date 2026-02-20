@@ -31,8 +31,8 @@ export const guestDataSchema = z.object({
   email: z.string().email().optional(),
   phone: z.string().optional(),
 }).refine(
-  (data) => data.email || data.phone,
-  { message: "Either email or phone is required" }
+  (data) => data.name || data.email || data.phone,
+  { message: "At least one guest field is required" }
 );
 
 export type GuestData = z.infer<typeof guestDataSchema>;
