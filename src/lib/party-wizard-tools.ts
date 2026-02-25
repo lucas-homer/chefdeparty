@@ -288,7 +288,19 @@ export function getWizardTools(step: WizardStep, context: ToolContext): ToolSet 
         }),
       };
 
-    case "guests":
+    case "guests": {
+      // Tool calls can be executed in parallel by the AI SDK. Guest list mutations
+      // must run in-order to avoid lost updates when each call persists the full list.
+      let guestMutationQueue: Promise<void> = Promise.resolve();
+      const runGuestMutation = <T>(operation: () => Promise<T>): Promise<T> => {
+        const next = guestMutationQueue.then(operation, operation);
+        guestMutationQueue = next.then(
+          () => undefined,
+          () => undefined
+        );
+        return next;
+      };
+
       return {
         addGuest: tool({
           description:
@@ -300,7 +312,9 @@ export function getWizardTools(step: WizardStep, context: ToolContext): ToolSet 
             { input: { name: "Mom", phone: "+1-555-123-4567" } },
             { input: { name: "John Smith", email: "john@work.com", phone: "555-0123" } },
           ] as const,
-          execute: async (data) => addGuestAction({ db, userId, sessionId, currentData }, data),
+          execute: async (data) => runGuestMutation(
+            () => addGuestAction({ db, userId, sessionId, currentData }, data)
+          ),
         }),
         removeGuest: tool({
           description:
@@ -310,7 +324,9 @@ export function getWizardTools(step: WizardStep, context: ToolContext): ToolSet 
             { input: { index: 0 } },
             { input: { index: 2 } },
           ] as const,
-          execute: async (data) => removeGuestAction({ db, userId, sessionId, currentData }, data),
+          execute: async (data) => runGuestMutation(
+            () => removeGuestAction({ db, userId, sessionId, currentData }, data)
+          ),
         }),
         confirmGuestList: tool({
           description:
@@ -319,9 +335,12 @@ export function getWizardTools(step: WizardStep, context: ToolContext): ToolSet 
           inputExamples: [
             { input: {} },
           ] as const,
-          execute: async () => confirmGuestListAction({ db, userId, sessionId, currentData, writer }),
+          execute: async () => runGuestMutation(
+            () => confirmGuestListAction({ db, userId, sessionId, currentData, writer })
+          ),
         }),
       };
+    }
 
     case "menu":
       return {
