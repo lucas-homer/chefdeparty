@@ -569,4 +569,16 @@
     0%, 100% { opacity: 0.4; }
     50% { opacity: 0.7; }
   }
+
+  /* Command bar glow on focus */
+  .command-bar:focus-within {
+    box-shadow:
+      0 0 0 1px hsl(var(--primary) / 0.15),
+      0 4px 12px hsl(var(--shadow-color) / 0.08);
+  }
+
+  /* Tool invocation indicator animation */
+  .tool-invocation-indicator {
+    animation: fadeIn 0.2s ease-out both;
+  }
 }

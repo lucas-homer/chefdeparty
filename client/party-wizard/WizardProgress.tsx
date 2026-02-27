@@ -1,4 +1,5 @@
 import React from "react";
+import { Check } from "lucide-react";
 import type { WizardStep } from "./types";
 import { WIZARD_STEPS, STEP_LABELS, STEP_LABELS_SHORT } from "./types";
 
@@ -30,37 +31,33 @@ export function WizardProgress({
               onClick={() => canClick && onStepClick?.(step)}
               disabled={!canClick}
               className={`
-                flex items-center gap-1 sm:gap-2 px-2 sm:px-3 py-1.5 rounded-full text-xs sm:text-sm font-medium
-                transition-colors whitespace-nowrap flex-shrink-0
+                flex items-center gap-1.5 sm:gap-2 px-2.5 sm:px-3.5 py-1.5 rounded-full text-xs sm:text-sm font-medium
+                transition-all whitespace-nowrap flex-shrink-0
                 ${
                   isCurrent
-                    ? "bg-primary text-primary-foreground"
+                    ? "bg-primary text-primary-foreground shadow-warm-sm"
                     : isReachable
                       ? "bg-primary/10 text-primary hover:bg-primary/20 cursor-pointer"
-                      : "bg-muted text-muted-foreground cursor-not-allowed"
+                      : "bg-muted text-muted-foreground cursor-not-allowed opacity-60"
                 }
               `}
             >
               <span
                 className={`
-                  flex items-center justify-center w-5 h-5 rounded-full text-xs
+                  flex items-center justify-center w-5 h-5 rounded-full text-xs font-semibold
                   ${
                     isCurrent
                       ? "bg-primary-foreground/20"
-                      : isReachable
+                      : isComplete
                         ? "bg-primary/20"
-                        : "bg-muted-foreground/20"
+                        : isReachable
+                          ? "bg-primary/15"
+                          : "bg-muted-foreground/15"
                   }
                 `}
               >
                 {isComplete ? (
-                  <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
-                    <path
-                      fillRule="evenodd"
-                      d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"
-                      clipRule="evenodd"
-                    />
-                  </svg>
+                  <Check className="w-3 h-3" />
                 ) : (
                   index + 1
                 )}
@@ -74,8 +71,9 @@ export function WizardProgress({
             {index < WIZARD_STEPS.length - 1 && (
               <div
                 className={`
-                  flex-1 h-0.5 mx-1 sm:mx-2 min-w-2
-                  ${index < furthestStepIndex ? "bg-primary/40" : "bg-muted"}
+                  flex-1 h-px mx-1.5 sm:mx-2.5 min-w-3
+                  transition-colors duration-300
+                  ${index < furthestStepIndex ? "bg-primary/40" : "bg-border"}
                 `}
               />
             )}
