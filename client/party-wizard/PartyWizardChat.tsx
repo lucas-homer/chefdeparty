@@ -19,10 +19,14 @@ import type { TimelineCurationSubmission } from "./TimelinePreview";
 import { useWizardState } from "./useWizardState";
 import { MobileSidebarTrigger, DesktopSidebarAside } from "./WizardSidebarContainer";
 import type { WizardSidebarItem } from "./WizardSidebar";
+import { SuggestionChips } from "./SuggestionChips";
+import { ToolInvocationIndicator } from "./ToolInvocationIndicator";
 import {
+  ArrowUp,
   BookOpen,
   Camera,
   Clock3,
+  Image as ImageIcon,
   Link,
   Sparkles,
   User,
@@ -728,15 +732,17 @@ function PartyWizardChatInner({
       };
 
       return (
-        <div key={index} className="mt-3 p-4 bg-card border rounded-lg">
-          <h3 className="font-medium mb-2">Please confirm {request.step}:</h3>
+        <div key={index} className="mt-3 rounded-xl border border-border/60 bg-card/80 p-4 shadow-warm-sm backdrop-blur-sm">
+          <h3 className="font-medium mb-3 text-sm uppercase tracking-wide text-muted-foreground">
+            Confirm {request.step}
+          </h3>
           {renderConfirmationContent()}
           <div className="flex gap-2">
             <button
               type="button"
               onClick={() => handleApprove(request.id)}
               disabled={isLoading}
-              className="px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90 disabled:opacity-50 text-sm font-medium"
+              className="inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground shadow-warm-sm transition-all hover:bg-primary/90 active:scale-[0.97] disabled:opacity-50"
             >
               Confirm & Continue
             </button>
@@ -744,7 +750,7 @@ function PartyWizardChatInner({
               type="button"
               onClick={() => handleRevise(request.id)}
               disabled={isLoading}
-              className="px-4 py-2 border rounded-md hover:bg-muted text-sm"
+              className="rounded-lg border border-border/80 px-4 py-2 text-sm transition-all hover:bg-muted active:scale-[0.97]"
             >
               Make Changes
             </button>
@@ -757,13 +763,16 @@ function PartyWizardChatInner({
       const data = (part as { data: { decision: { type: string; feedback?: string } } }).data;
       if (data.decision.type === "approve") {
         return (
-          <div key={index} className="text-sm text-green-600 dark:text-green-400">
-            ✓ Confirmed
+          <div key={index} className="inline-flex items-center gap-1.5 rounded-full bg-green-100 px-3 py-1 text-xs font-medium text-green-700 dark:bg-green-900/30 dark:text-green-400">
+            <svg className="h-3 w-3" fill="currentColor" viewBox="0 0 20 20">
+              <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+            </svg>
+            Confirmed
           </div>
         );
       } else {
         return (
-          <div key={index} className="text-sm text-muted-foreground">
+          <div key={index} className="inline-flex items-center gap-1.5 rounded-full bg-muted px-3 py-1 text-xs font-medium text-muted-foreground">
             Requesting changes...
           </div>
         );
@@ -773,10 +782,13 @@ function PartyWizardChatInner({
     if (part.type === "data-step-confirmed") {
       const data = (part as { data: { nextStep: string } }).data;
       return (
-        <div key={index} className="text-sm text-green-600 dark:text-green-400">
+        <div key={index} className="inline-flex items-center gap-1.5 rounded-full bg-green-100 px-3 py-1 text-xs font-medium text-green-700 dark:bg-green-900/30 dark:text-green-400">
+          <svg className="h-3 w-3" fill="currentColor" viewBox="0 0 20 20">
+            <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+          </svg>
           {data.nextStep === "complete"
-            ? "✓ All steps complete! Creating your party..."
-            : `✓ Moving to ${data.nextStep} step...`}
+            ? "All steps complete! Creating your party..."
+            : `Moving to ${data.nextStep}...`}
         </div>
       );
     }
@@ -887,12 +899,39 @@ function PartyWizardChatInner({
       );
     }
 
+    // Tool invocation - show indicator with pending/complete state
+    if (part.type === "tool-invocation") {
+      const invocation = part as {
+        toolInvocation: {
+          toolName: string;
+          state: string;
+          result?: { message?: string; error?: string };
+        };
+      };
+      const { toolName, state, result } = invocation.toolInvocation;
+      const toolState =
+        state === "result"
+          ? "complete"
+          : state === "partial-call" || state === "call"
+            ? "pending"
+            : (state as "pending" | "streaming" | "complete" | "error");
+
+      return (
+        <ToolInvocationIndicator
+          key={index}
+          toolName={toolName}
+          state={toolState}
+          result={result}
+        />
+      );
+    }
+
     // Show tool result messages to users (e.g., "Added John to the guest list")
     if (part.type === "tool-result") {
       const toolResult = (part as { result?: { message?: string } }).result;
       if (toolResult?.message) {
         return (
-          <div key={index} className="text-sm">
+          <div key={index} className="text-sm text-muted-foreground">
             {toolResult.message}
           </div>
         );
@@ -916,7 +955,7 @@ function PartyWizardChatInner({
       return (
         <div
           key={index}
-          className={isErrorPart ? "text-sm text-amber-700 dark:text-amber-400" : "text-sm"}
+          className={isErrorPart ? "text-sm text-amber-700 dark:text-amber-400" : "text-sm text-muted-foreground"}
         >
           {toolMessage}
         </div>
@@ -953,9 +992,13 @@ function PartyWizardChatInner({
           >
             {/* Welcome message for each step */}
             {messages.length === 0 && (
-              <div className="text-center text-muted-foreground py-8">
-                <p className="text-lg font-medium">{getStepWelcome(currentStep)}</p>
-                <p className="text-sm mt-2">{getStepInstructions(currentStep)}</p>
+              <div className="flex flex-col items-center justify-center py-12 sm:py-16 animate-fade-in">
+                <h2 className="text-2xl sm:text-3xl font-heading font-semibold text-foreground mb-2">
+                  {getStepWelcome(currentStep)}
+                </h2>
+                <p className="text-sm sm:text-base text-muted-foreground max-w-md text-center">
+                  {getStepInstructions(currentStep)}
+                </p>
               </div>
             )}
 
@@ -978,40 +1021,47 @@ function PartyWizardChatInner({
                 return null;
               }
 
+              if (msg.role === "user") {
+                return (
+                  <div key={msg.id} className="flex justify-end animate-slide-up">
+                    <div className="max-w-[80%] rounded-2xl rounded-br-md bg-primary px-4 py-2.5 text-primary-foreground shadow-warm-sm">
+                      {renderedParts}
+                    </div>
+                  </div>
+                );
+              }
+
               return (
-                <div
-                  key={msg.id}
-                  className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}
-                >
-                  <div
-                    className={`max-w-[80%] p-3 rounded-lg ${
-                      msg.role === "user" ? "bg-primary text-primary-foreground" : "bg-muted"
-                    }`}
-                  >
+                <div key={msg.id} className="flex justify-start gap-3 animate-slide-up">
+                  <div className="mt-1 flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary">
+                    <Sparkles className="h-3.5 w-3.5" />
+                  </div>
+                  <div className="max-w-[85%] space-y-2">
                     {renderedParts}
                   </div>
                 </div>
               );
             })}
 
-            {/* Loading indicator */}
-            {isLoading && (
-              <div className="flex justify-start">
-                <div className="bg-muted p-3 rounded-lg">
-                  <div className="flex items-center gap-2">
-                    <div
-                      className="w-2 h-2 bg-primary rounded-full animate-bounce"
-                      style={{ animationDelay: "0ms" }}
-                    />
-                    <div
-                      className="w-2 h-2 bg-primary rounded-full animate-bounce"
-                      style={{ animationDelay: "150ms" }}
-                    />
-                    <div
-                      className="w-2 h-2 bg-primary rounded-full animate-bounce"
-                      style={{ animationDelay: "300ms" }}
-                    />
-                  </div>
+            {/* Loading indicator - shows typing dots when AI has no streaming content yet */}
+            {isLoading && !messages.some((m) => m.role === "assistant" && m.id === messages[messages.length - 1]?.id && status === "streaming") && (
+              <div className="flex justify-start gap-3 animate-fade-in">
+                <div className="mt-1 flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary">
+                  <Sparkles className="h-3.5 w-3.5 animate-pulse" />
+                </div>
+                <div className="flex items-center gap-1.5 rounded-2xl rounded-bl-md bg-muted/60 px-4 py-3">
+                  <div
+                    className="h-1.5 w-1.5 rounded-full bg-muted-foreground/50 animate-bounce"
+                    style={{ animationDelay: "0ms" }}
+                  />
+                  <div
+                    className="h-1.5 w-1.5 rounded-full bg-muted-foreground/50 animate-bounce"
+                    style={{ animationDelay: "150ms" }}
+                  />
+                  <div
+                    className="h-1.5 w-1.5 rounded-full bg-muted-foreground/50 animate-bounce"
+                    style={{ animationDelay: "300ms" }}
+                  />
                 </div>
               </div>
             )}
@@ -1026,10 +1076,20 @@ function PartyWizardChatInner({
             <div ref={messagesEndRef} />
           </div>
 
-          {/* Input Area */}
-          <div className="sticky bottom-0 z-20 p-4 pt-3 bg-background/95 backdrop-blur">
-            <div className="rounded-2xl border border-border/80 bg-card/95 p-3 shadow-lg backdrop-blur-sm md:p-4">
-              {/* Mobile sidebar trigger + drawer */}
+          {/* Command Bar Input Area */}
+          <div className="sticky bottom-0 z-20 bg-gradient-to-t from-background via-background/95 to-transparent px-4 pb-4 pt-6">
+            <div className="mx-auto max-w-2xl">
+              {/* Suggestion chips */}
+              <SuggestionChips
+                step={currentStep}
+                onSelect={(message) => {
+                  sendMessage({ text: message });
+                }}
+                disabled={isLoading}
+                hasMessages={messages.length > 0}
+              />
+
+              {/* Mobile sidebar trigger */}
               {sidebarConfig && (
                 <MobileSidebarTrigger
                   title={sidebarConfig.title}
@@ -1042,122 +1102,109 @@ function PartyWizardChatInner({
                   triggerLabel={sidebarConfig.triggerLabel}
                 />
               )}
-              <form onSubmit={handleFormSubmit} className="space-y-3">
-                <Textarea
-                  ref={inputRef}
-                  value={input}
-                  onChange={(e) => setInput(e.target.value)}
-                  onKeyDown={handleInputKeyDown}
-                  placeholder={
-                    isGivingFeedback
-                      ? "Describe what you'd like to change..."
-                      : getInputPlaceholder(currentStep)
-                  }
-                  className="min-h-[54px] max-h-48 resize-y border-primary/70 bg-background/90"
-                  disabled={isLoading}
-                  rows={2}
-                />
 
-                <div className="flex flex-wrap items-center gap-3">
-                  {/* Image upload button for menu step */}
-                  {currentStep === "menu" && (
-                    <>
-                      <input
-                        ref={fileInputRef}
-                        type="file"
-                        accept="image/*"
-                        onChange={handleImageUpload}
-                        className="hidden"
-                      />
+              {/* Command bar */}
+              <form onSubmit={handleFormSubmit}>
+                <div className="command-bar group relative rounded-2xl border border-border/80 bg-card shadow-warm-lg transition-all focus-within:border-primary/40 focus-within:shadow-[0_0_0_1px_hsl(var(--primary)/0.15),0_4px_12px_hsl(var(--shadow-color)/0.08)]">
+                  <Textarea
+                    ref={inputRef}
+                    value={input}
+                    onChange={(e) => setInput(e.target.value)}
+                    onKeyDown={handleInputKeyDown}
+                    placeholder={
+                      isGivingFeedback
+                        ? "Describe what you'd like to change..."
+                        : getInputPlaceholder(currentStep)
+                    }
+                    className="min-h-[52px] max-h-40 resize-none border-0 bg-transparent px-4 py-3 pr-12 shadow-none ring-0 focus-visible:ring-0 focus-visible:outline-none"
+                    disabled={isLoading}
+                    rows={1}
+                  />
+
+                  {/* Action row inside the command bar */}
+                  <div className="flex items-center gap-1 px-3 pb-2.5">
+                    {/* Image upload for menu step */}
+                    {currentStep === "menu" && (
+                      <>
+                        <input
+                          ref={fileInputRef}
+                          type="file"
+                          accept="image/*"
+                          onChange={handleImageUpload}
+                          className="hidden"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => fileInputRef.current?.click()}
+                          className="flex h-8 w-8 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                          title="Upload recipe image"
+                        >
+                          <ImageIcon className="h-4 w-4" />
+                        </button>
+                      </>
+                    )}
+
+                    {/* Secondary actions */}
+                    <div className="flex items-center gap-1 text-xs text-muted-foreground">
                       <button
                         type="button"
-                        onClick={() => fileInputRef.current?.click()}
-                        className="h-10 w-10 rounded-md border border-border/80 hover:bg-muted flex items-center justify-center"
-                        title="Upload recipe image"
+                        onClick={onCancel}
+                        className="rounded-md px-2 py-1 transition-colors hover:bg-muted hover:text-foreground"
                       >
-                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        Cancel
+                      </button>
+                      {currentStep !== "party-info" && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const currentIndex = WIZARD_STEPS.indexOf(currentStep);
+                            if (currentIndex > 0) {
+                              setStep(WIZARD_STEPS[currentIndex - 1]);
+                            }
+                          }}
+                          className="rounded-md px-2 py-1 transition-colors hover:bg-muted hover:text-foreground"
+                        >
+                          Back
+                        </button>
+                      )}
+                      <button
+                        type="button"
+                        onClick={startNewSession}
+                        className="rounded-md px-2 py-1 transition-colors hover:bg-muted hover:text-foreground"
+                      >
+                        Start over
+                      </button>
+                    </div>
+
+                    {/* Send button */}
+                    <button
+                      type="submit"
+                      aria-label="Send message"
+                      disabled={isLoading || !input.trim()}
+                      className="ml-auto flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg bg-primary text-primary-foreground transition-all hover:bg-primary/90 disabled:opacity-30 disabled:hover:bg-primary"
+                    >
+                      {isLoading ? (
+                        <svg className="h-4 w-4 animate-spin" viewBox="0 0 24 24">
+                          <circle
+                            className="opacity-25"
+                            cx="12"
+                            cy="12"
+                            r="10"
+                            stroke="currentColor"
+                            strokeWidth="4"
+                            fill="none"
+                          />
                           <path
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                            strokeWidth="2"
-                            d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"
+                            className="opacity-75"
+                            fill="currentColor"
+                            d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
                           />
                         </svg>
-                      </button>
-                    </>
-                  )}
-
-                  <button
-                    type="button"
-                    onClick={onCancel}
-                    className="text-sm text-muted-foreground hover:text-foreground"
-                  >
-                    Cancel
-                  </button>
-                  {currentStep !== "party-info" && (
-                    <button
-                      type="button"
-                      onClick={() => {
-                        const currentIndex = WIZARD_STEPS.indexOf(currentStep);
-                        if (currentIndex > 0) {
-                          setStep(WIZARD_STEPS[currentIndex - 1]);
-                        }
-                      }}
-                      className="text-sm text-muted-foreground hover:text-foreground flex items-center gap-1"
-                    >
-                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          strokeWidth="2"
-                          d="M15 19l-7-7 7-7"
-                        />
-                      </svg>
-                      Back
+                      ) : (
+                        <ArrowUp className="h-4 w-4" />
+                      )}
                     </button>
-                  )}
-                  <button
-                    type="button"
-                    onClick={startNewSession}
-                    className="text-sm text-muted-foreground hover:text-foreground"
-                  >
-                    Start Over
-                  </button>
-
-                  <button
-                    type="submit"
-                    aria-label="Send message"
-                    disabled={isLoading || !input.trim()}
-                    className="ml-auto h-10 w-10 shrink-0 rounded-md bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50 flex items-center justify-center"
-                  >
-                    {isLoading ? (
-                      <svg className="animate-spin h-5 w-5" viewBox="0 0 24 24">
-                        <circle
-                          className="opacity-25"
-                          cx="12"
-                          cy="12"
-                          r="10"
-                          stroke="currentColor"
-                          strokeWidth="4"
-                          fill="none"
-                        />
-                        <path
-                          className="opacity-75"
-                          fill="currentColor"
-                          d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-                        />
-                      </svg>
-                    ) : (
-                      <svg className="w-5 h-5 rotate-90" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          strokeWidth="2"
-                          d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8"
-                        />
-                      </svg>
-                    )}
-                  </button>
+                  </div>
                 </div>
               </form>
             </div>
