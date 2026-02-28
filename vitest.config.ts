@@ -1,3 +1,9 @@
+// Polyfill browser globals before any module loading.
+// @auth/core (via @hono/auth-js) accesses navigator at module scope.
+if (typeof globalThis.navigator === "undefined") {
+  (globalThis as any).navigator = { userAgent: "node" };
+}
+
 import { defineConfig } from "vitest/config";
 import react from "@vitejs/plugin-react";
 import path from "path";
