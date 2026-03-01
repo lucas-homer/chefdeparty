@@ -302,16 +302,25 @@ Previous confirmation summary: "${pendingConfirmationRequest.summary}"`;
           ) as Array<{ type: "image"; image: string }>;
 
           if (imageParts.length > 0) {
-            // Compute hash
-            const imageData = imageParts[0].image as string;
-            const imageHash = await hashImageData(imageData);
+            // Compute hash for each image
+            const imageHashes = await Promise.all(
+              imageParts.map((img) => hashImageData(img.image as string))
+            );
+            // Combined hash for multi-image deduplication
+            const combinedHash = imageParts.length === 1
+              ? imageHashes[0]
+              : await hashImageData(imageHashes.join(":"));
 
-            // Check duplicates
+            // Check duplicates - both combined hash and individual image hashes
             const processedHashes = currentData.menuPlan?.processedImageHashes || [];
-            if (processedHashes.includes(imageHash)) {
-              console.log("[menu] Image already processed, skipping");
+            const isDuplicate = processedHashes.includes(combinedHash)
+              || imageHashes.every((h) => processedHashes.includes(h));
+            if (isDuplicate) {
+              console.log("[menu] Image(s) already processed, skipping");
 
-              const responseText = "This image has already been added to the menu.";
+              const responseText = imageParts.length === 1
+                ? "This image has already been added to the menu."
+                : "These images have already been added to the menu.";
               const textId = crypto.randomUUID();
               writer.write({ type: "text-start", id: textId });
               writer.write({ type: "text-delta", id: textId, delta: responseText });
@@ -329,7 +338,8 @@ Previous confirmation summary: "${pendingConfirmationRequest.summary}"`;
               updateLangfuseTrace(telemetry?.traceClient, {
                 output: {
                   event: "menu-image-duplicate",
-                  imageHash,
+                  imageHashes,
+                  combinedHash,
                   processedImageCount: processedHashes.length,
                   message: responseText,
                 },
@@ -348,10 +358,16 @@ Previous confirmation summary: "${pendingConfirmationRequest.summary}"`;
                     })),
                     {
                       type: "text" as const,
-                      text: `Extract the recipe from this image. Parse all ingredients with their amounts, units, and names. Include step-by-step instructions.
+                      text: imageParts.length === 1
+                        ? `Extract the recipe from this image. Parse all ingredients with their amounts, units, and names. Include step-by-step instructions.
 
 If the image shows a handwritten or printed recipe card, transcribe it accurately.
 If it shows a dish/food, infer a reasonable recipe for it.
+If the recipe name isn't clear, give it an appropriate name based on the dish.`
+                        : `Extract the recipe from these ${imageParts.length} images. The images may show different pages of the same recipe. Combine all information into a single complete recipe.
+
+Parse all ingredients with their amounts, units, and names. Include step-by-step instructions.
+If the images show handwritten or printed recipe cards, transcribe them accurately.
 If the recipe name isn't clear, give it an appropriate name based on the dish.`,
                     },
                   ],
@@ -365,7 +381,7 @@ If the recipe name isn't clear, give it an appropriate name based on the dish.`,
                 input: {
                   messages: imageExtractionMessages,
                   imageCount: imageParts.length,
-                  hasImageHash: Boolean(imageHash),
+                  hasImageHash: Boolean(combinedHash),
                 },
                 metadata: {
                   step,
@@ -414,10 +430,15 @@ If the recipe name isn't clear, give it an appropriate name based on the dish.`,
                 {
                   ...recipe,
                   sourceType: "photo" as const,
-                  imageHash,
+                  imageHash: combinedHash,
                 },
               ];
-              menuPlan.processedImageHashes = [...(menuPlan.processedImageHashes || []), imageHash];
+              menuPlan.processedImageHashes = [
+                ...(menuPlan.processedImageHashes || []),
+                combinedHash,
+                // Also store individual hashes so re-submitting a subset is detected
+                ...imageHashes.filter((h) => h !== combinedHash),
+              ];
 
               // Update currentData and persist
               currentData.menuPlan = menuPlan;
@@ -435,7 +456,8 @@ If the recipe name isn't clear, give it an appropriate name based on the dish.`,
                 );
 
               // Build response
-              const responseText = `I extracted "${recipe.name}" from your image and added it to the menu! ${recipe.ingredients.length} ingredients and ${recipe.instructions.length} steps.
+              const imageWord = imageParts.length === 1 ? "image" : `${imageParts.length} images`;
+              const responseText = `I extracted "${recipe.name}" from your ${imageWord} and added it to the menu! ${recipe.ingredients.length} ingredients and ${recipe.instructions.length} steps.
 
 What else would you like to add, or are you ready to finalize the menu?`;
 
@@ -483,7 +505,9 @@ What else would you like to add, or are you ready to finalize the menu?`;
                   recipeName: recipe.name,
                   ingredientCount: recipe.ingredients.length,
                   instructionCount: recipe.instructions.length,
-                  imageHash,
+                  imageCount: imageParts.length,
+                  combinedHash,
+                  imageHashes,
                   menuItemCount: menuPlan.existingRecipes.length + menuPlan.newRecipes.length,
                 },
               });
