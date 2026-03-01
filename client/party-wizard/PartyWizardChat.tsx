@@ -43,6 +43,37 @@ import {
   shouldRefreshSessionFromAssistantMessage,
 } from "@/lib/wizard-message-parts";
 
+/**
+ * Compute a pixel-based fingerprint for an image using canvas.
+ * This produces deterministic hashes even when the OS transcodes
+ * the same source file non-deterministically (e.g. HEIC → JPEG).
+ */
+async function computeImageFingerprint(dataUrl: string): Promise<string> {
+  return new Promise((resolve) => {
+    const img = new Image();
+    img.onload = async () => {
+      const size = 64;
+      const canvas = document.createElement("canvas");
+      canvas.width = size;
+      canvas.height = size;
+      const ctx = canvas.getContext("2d")!;
+      ctx.drawImage(img, 0, 0, size, size);
+      const pixels = ctx.getImageData(0, 0, size, size).data;
+      const hashBuffer = await crypto.subtle.digest("SHA-256", pixels);
+      const hashArray = Array.from(new Uint8Array(hashBuffer));
+      resolve(hashArray.map((b) => b.toString(16).padStart(2, "0")).join(""));
+    };
+    img.onerror = () => {
+      // Fall back to hashing the raw data URL if canvas fails
+      crypto.subtle.digest("SHA-256", new TextEncoder().encode(dataUrl)).then((buf) => {
+        const arr = Array.from(new Uint8Array(buf));
+        resolve(arr.map((b) => b.toString(16).padStart(2, "0")).join(""));
+      });
+    };
+    img.src = dataUrl;
+  });
+}
+
 // Types for HITL step confirmation flow
 interface StepConfirmationRequest {
   id: string;
@@ -140,7 +171,7 @@ function PartyWizardChatInner({
   // Curated timeline from TimelinePreview - used when completing wizard
   const [curatedTimeline, setCuratedTimeline] = useState<TimelineTaskData[] | null>(null);
   // Staged images for multi-image upload in menu step
-  const [stagedImages, setStagedImages] = useState<Array<{ dataUrl: string; name: string }>>([]);
+  const [stagedImages, setStagedImages] = useState<Array<{ dataUrl: string; name: string; fingerprint: string }>>([]);
 
   // Get current step from session
   const currentStep = session.currentStep as WizardStep;
@@ -468,12 +499,13 @@ function PartyWizardChatInner({
     const files = e.target.files;
     if (!files || files.length === 0) return;
 
-    // Read all selected files and stage them
+    // Read all selected files, compute pixel fingerprints, and stage them
     for (const file of Array.from(files)) {
       const reader = new FileReader();
-      reader.onload = () => {
+      reader.onload = async () => {
         const dataUrl = reader.result as string;
-        setStagedImages((prev) => [...prev, { dataUrl, name: file.name }]);
+        const fingerprint = await computeImageFingerprint(dataUrl);
+        setStagedImages((prev) => [...prev, { dataUrl, name: file.name, fingerprint }]);
       };
       reader.readAsDataURL(file);
     }
@@ -491,6 +523,9 @@ function PartyWizardChatInner({
   function sendStagedImages() {
     if (stagedImages.length === 0) return;
 
+    const userText = input.trim() || "Please extract the recipe from these images and add it to the menu.";
+    const fingerprints = stagedImages.map((img) => img.fingerprint).join(",");
+
     const parts = [
       ...stagedImages.map((img) => ({
         type: "image" as const,
@@ -498,7 +533,7 @@ function PartyWizardChatInner({
       })),
       {
         type: "text" as const,
-        text: input.trim() || "Please extract the recipe from these images and add it to the menu.",
+        text: `${userText}\n[image-fingerprints:${fingerprints}]`,
       },
     ];
 

@@ -297,17 +297,40 @@ Previous confirmation summary: "${pendingConfirmationRequest.summary}"`;
         if (hasImage) {
           console.log("[menu] Image detected - using direct extraction workflow");
 
+          // Extract and strip client-side pixel fingerprints before any AI processing
+          const fingerprintMatch = incomingMessage.textContent.match(
+            /\[image-fingerprints:([a-f0-9,]+)\]/
+          );
+          if (fingerprintMatch) {
+            const fpRegex = /\n?\[image-fingerprints:[a-f0-9,]+\]/;
+            incomingMessage.textContent = incomingMessage.textContent.replace(fpRegex, "").trim();
+            // Also strip from text parts so it doesn't leak into AI messages
+            incomingMessage.parts = incomingMessage.parts.map((p) =>
+              p.type === "text" && typeof (p as { text?: string }).text === "string"
+                ? { ...p, text: ((p as { text: string }).text).replace(fpRegex, "").trim() }
+                : p
+            );
+          }
+
           const imageParts = incomingMessage.parts.filter(
             (p) => p.type === "image"
           ) as Array<{ type: "image"; image: string }>;
 
           if (imageParts.length > 0) {
-            // Compute hash for each image
-            const imageHashes = await Promise.all(
-              imageParts.map((img) => hashImageData(img.image as string))
-            );
+            // Use client-provided pixel fingerprints for dedup (handles HEIC transcoding non-determinism)
+            let imageHashes: string[];
+            if (fingerprintMatch) {
+              imageHashes = fingerprintMatch[1].split(",");
+              console.log("[menu] Using client-provided pixel fingerprints for dedup");
+            } else {
+              // Fallback: hash raw image data (works when files aren't transcoded)
+              imageHashes = await Promise.all(
+                imageParts.map((img) => hashImageData(img.image as string))
+              );
+            }
+
             // Combined hash for multi-image deduplication
-            const combinedHash = imageParts.length === 1
+            const combinedHash = imageHashes.length === 1
               ? imageHashes[0]
               : await hashImageData(imageHashes.join(":"));
 
