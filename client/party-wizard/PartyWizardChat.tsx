@@ -28,6 +28,7 @@ import {
   User,
   Users,
   UtensilsCrossed,
+  X,
 } from "lucide-react";
 import type {
   WizardStep,
@@ -41,6 +42,37 @@ import {
   isToolPartError,
   shouldRefreshSessionFromAssistantMessage,
 } from "@/lib/wizard-message-parts";
+
+/**
+ * Compute a pixel-based fingerprint for an image using canvas.
+ * This produces deterministic hashes even when the OS transcodes
+ * the same source file non-deterministically (e.g. HEIC → JPEG).
+ */
+async function computeImageFingerprint(dataUrl: string): Promise<string> {
+  return new Promise((resolve) => {
+    const img = new Image();
+    img.onload = async () => {
+      const size = 64;
+      const canvas = document.createElement("canvas");
+      canvas.width = size;
+      canvas.height = size;
+      const ctx = canvas.getContext("2d")!;
+      ctx.drawImage(img, 0, 0, size, size);
+      const pixels = ctx.getImageData(0, 0, size, size).data;
+      const hashBuffer = await crypto.subtle.digest("SHA-256", pixels);
+      const hashArray = Array.from(new Uint8Array(hashBuffer));
+      resolve(hashArray.map((b) => b.toString(16).padStart(2, "0")).join(""));
+    };
+    img.onerror = () => {
+      // Fall back to hashing the raw data URL if canvas fails
+      crypto.subtle.digest("SHA-256", new TextEncoder().encode(dataUrl)).then((buf) => {
+        const arr = Array.from(new Uint8Array(buf));
+        resolve(arr.map((b) => b.toString(16).padStart(2, "0")).join(""));
+      });
+    };
+    img.src = dataUrl;
+  });
+}
 
 // Types for HITL step confirmation flow
 interface StepConfirmationRequest {
@@ -138,6 +170,8 @@ function PartyWizardChatInner({
   const [locallyDecidedIds, setLocallyDecidedIds] = useState<Set<string>>(new Set());
   // Curated timeline from TimelinePreview - used when completing wizard
   const [curatedTimeline, setCuratedTimeline] = useState<TimelineTaskData[] | null>(null);
+  // Staged images for multi-image upload in menu step
+  const [stagedImages, setStagedImages] = useState<Array<{ dataUrl: string; name: string; fingerprint: string }>>([]);
 
   // Get current step from session
   const currentStep = session.currentStep as WizardStep;
@@ -245,6 +279,13 @@ function PartyWizardChatInner({
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
+
+  // Clear staged images when navigating away from menu step
+  useEffect(() => {
+    if (currentStep !== "menu") {
+      setStagedImages([]);
+    }
+  }, [currentStep]);
 
   // Process data parts from assistant messages
   function processDataParts(message: UIMessage) {
@@ -394,6 +435,13 @@ function PartyWizardChatInner({
 
   function handleFormSubmit(e: FormEvent) {
     e.preventDefault();
+
+    // If staged images exist, send them (text input is optional)
+    if (stagedImages.length > 0) {
+      sendStagedImages();
+      return;
+    }
+
     if (!input.trim()) return;
 
     if (isGivingFeedback && feedbackRequestId) {
@@ -411,7 +459,15 @@ function PartyWizardChatInner({
     }
 
     e.preventDefault();
-    if (!input.trim() || isLoading) return;
+    if (isLoading) return;
+
+    // If staged images exist, send them (text input is optional)
+    if (stagedImages.length > 0) {
+      sendStagedImages();
+      return;
+    }
+
+    if (!input.trim()) return;
 
     if (isGivingFeedback && feedbackRequestId) {
       handleSubmitRevisionFeedback(input);
@@ -440,26 +496,51 @@ function PartyWizardChatInner({
   }
 
   async function handleImageUpload(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0];
-    if (!file) return;
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
 
-    // Convert to base64
-    const reader = new FileReader();
-    reader.onload = async () => {
-      const dataUrl = reader.result as string;
-      sendMessage({
-        parts: [
-          { type: "image", image: dataUrl },
-          { type: "text", text: "Please extract the recipe from this image and add it to the menu." },
-        ],
-      });
-    };
-    reader.readAsDataURL(file);
+    // Read all selected files, compute pixel fingerprints, and stage them
+    for (const file of Array.from(files)) {
+      const reader = new FileReader();
+      reader.onload = async () => {
+        const dataUrl = reader.result as string;
+        const fingerprint = await computeImageFingerprint(dataUrl);
+        setStagedImages((prev) => [...prev, { dataUrl, name: file.name, fingerprint }]);
+      };
+      reader.readAsDataURL(file);
+    }
 
-    // Clear the input
+    // Clear the input so the same files can be re-selected
     if (fileInputRef.current) {
       fileInputRef.current.value = "";
     }
+  }
+
+  function removeStagedImage(index: number) {
+    setStagedImages((prev) => prev.filter((_, i) => i !== index));
+  }
+
+  function sendStagedImages() {
+    if (stagedImages.length === 0) return;
+
+    const userText = input.trim() || "Please extract the recipe from these images and add it to the menu.";
+    const fingerprints = stagedImages.map((img) => img.fingerprint).join(",");
+
+    const parts = [
+      ...stagedImages.map((img) => ({
+        type: "image" as const,
+        image: img.dataUrl,
+      })),
+      {
+        type: "text" as const,
+        text: `${userText}\n[image-fingerprints:${fingerprints}]`,
+      },
+    ];
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- AI SDK types don't expose image part in UIMessagePart union
+    sendMessage({ parts: parts as any });
+    setStagedImages([]);
+    setInput("");
   }
 
   // Handle removing a menu item from the sidebar - calls API directly for instant removal
@@ -1043,6 +1124,32 @@ function PartyWizardChatInner({
                 />
               )}
               <form onSubmit={handleFormSubmit} className="space-y-3">
+                {/* Staged image thumbnails */}
+                {stagedImages.length > 0 && (
+                  <div className="flex flex-wrap items-center gap-2 rounded-md border border-border/80 bg-muted/30 p-2">
+                    {stagedImages.map((img, i) => (
+                      <div key={i} className="relative group">
+                        <img
+                          src={img.dataUrl}
+                          alt={img.name}
+                          className="h-[60px] w-[60px] object-cover rounded-md border border-border/50"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => removeStagedImage(i)}
+                          className="absolute -top-1.5 -right-1.5 h-5 w-5 rounded-full bg-destructive text-destructive-foreground flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+                          aria-label={`Remove ${img.name}`}
+                        >
+                          <X className="h-3 w-3" />
+                        </button>
+                      </div>
+                    ))}
+                    <span className="text-xs text-muted-foreground ml-1">
+                      {stagedImages.length} image{stagedImages.length !== 1 ? "s" : ""} staged
+                    </span>
+                  </div>
+                )}
+
                 <Textarea
                   ref={inputRef}
                   value={input}
@@ -1066,6 +1173,7 @@ function PartyWizardChatInner({
                         ref={fileInputRef}
                         type="file"
                         accept="image/*"
+                        multiple
                         onChange={handleImageUpload}
                         className="hidden"
                       />
@@ -1127,7 +1235,7 @@ function PartyWizardChatInner({
                   <button
                     type="submit"
                     aria-label="Send message"
-                    disabled={isLoading || !input.trim()}
+                    disabled={isLoading || (!input.trim() && stagedImages.length === 0)}
                     className="ml-auto h-10 w-10 shrink-0 rounded-md bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50 flex items-center justify-center"
                   >
                     {isLoading ? (

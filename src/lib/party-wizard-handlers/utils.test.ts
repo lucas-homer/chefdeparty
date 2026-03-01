@@ -3,6 +3,7 @@ import {
   buildTelemetrySettings,
   filterMessagesForAI,
   getSilentCompletionFallbackMessage,
+  hashImageData,
   isSilentModelCompletion,
   stripLargeDataForStorage,
 } from "./utils";
@@ -165,6 +166,40 @@ describe("party-wizard handler utils", () => {
 
     it("returns a generic retry message for provider interruptions", () => {
       expect(getSilentCompletionFallbackMessage("other")).toContain("temporary issue");
+    });
+  });
+
+  describe("hashImageData", () => {
+    it("returns a deterministic SHA-256 hex hash", async () => {
+      const hash = await hashImageData("data:image/png;base64,abc123");
+      expect(hash).toMatch(/^[0-9a-f]{64}$/);
+
+      // Same input produces same hash
+      const hash2 = await hashImageData("data:image/png;base64,abc123");
+      expect(hash2).toBe(hash);
+    });
+
+    it("returns different hashes for different inputs", async () => {
+      const hash1 = await hashImageData("data:image/png;base64,image1");
+      const hash2 = await hashImageData("data:image/png;base64,image2");
+      expect(hash1).not.toBe(hash2);
+    });
+
+    it("supports combined hash for multi-image deduplication", async () => {
+      const hash1 = await hashImageData("data:image/png;base64,page1");
+      const hash2 = await hashImageData("data:image/png;base64,page2");
+
+      // Combined hash from joining individual hashes
+      const combinedHash = await hashImageData(`${hash1}:${hash2}`);
+      expect(combinedHash).toMatch(/^[0-9a-f]{64}$/);
+
+      // Combined hash differs from individual hashes
+      expect(combinedHash).not.toBe(hash1);
+      expect(combinedHash).not.toBe(hash2);
+
+      // Same combination produces same combined hash
+      const combinedHash2 = await hashImageData(`${hash1}:${hash2}`);
+      expect(combinedHash2).toBe(combinedHash);
     });
   });
 });
