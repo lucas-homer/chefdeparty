@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { getWizardTools } from "../party-wizard-tools";
-import { confirmPartyInfoAction } from "./party-info";
+import { updatePartyInfoAction, confirmPartyInfoAction } from "./party-info";
 import {
   addGuestAction,
   confirmGuestListAction,
@@ -20,12 +20,10 @@ function sanitizeRequestId(value: unknown): unknown {
 }
 
 describe("party wizard actions parity", () => {
-  it("keeps confirmPartyInfo tool output and request structure aligned", async () => {
-    const writesFromTool: unknown[] = [];
-    const writesFromAction: unknown[] = [];
-
+  it("keeps updatePartyInfo tool output aligned with action", async () => {
     const toolCurrentData: Partial<WizardState> = {};
     const actionCurrentData: Partial<WizardState> = {};
+    const referenceNow = new Date("2026-02-16T09:00:00.000Z");
 
     const tools = getWizardTools("party-info", {
       db: {} as never,
@@ -33,28 +31,27 @@ describe("party wizard actions parity", () => {
       env: {} as never,
       currentData: toolCurrentData,
       sessionId: undefined,
-      referenceNow: new Date("2026-02-16T09:00:00.000Z"),
-      writer: { write: (chunk: unknown) => writesFromTool.push(chunk) } as unknown as Writable,
+      referenceNow,
+      writer: { write: () => {} } as unknown as Writable,
     });
 
-    const confirmTool = tools.confirmPartyInfo as {
+    const updateTool = tools.updatePartyInfo as {
       execute: (input: Record<string, unknown>) => Promise<Record<string, unknown>>;
     };
 
-    const toolResult = await confirmTool.execute({
+    const toolResult = await updateTool.execute({
       name: "Happy Birthday to Me",
       dateTimeInput: "this Sunday at 1pm",
       location: "Rory's place",
     });
 
-    const actionResult = await confirmPartyInfoAction(
+    const actionResult = await updatePartyInfoAction(
       {
         db: {} as never,
         userId: "test-user",
         sessionId: undefined,
         currentData: actionCurrentData,
-        referenceNow: new Date("2026-02-16T09:00:00.000Z"),
-        writer: { write: (chunk: unknown) => writesFromAction.push(chunk) } as never,
+        referenceNow,
       },
       {
         name: "Happy Birthday to Me",
@@ -62,6 +59,58 @@ describe("party wizard actions parity", () => {
         location: "Rory's place",
       }
     );
+
+    expect(toolResult).toMatchObject({
+      success: true,
+      action: "updatePartyInfo",
+      message: "Updated party details.",
+    });
+    expect(actionResult).toMatchObject({
+      success: true,
+      action: "updatePartyInfo",
+      message: "Updated party details.",
+    });
+  });
+
+  it("keeps confirmPartyInfo tool output and request structure aligned", async () => {
+    const writesFromTool: unknown[] = [];
+    const writesFromAction: unknown[] = [];
+    const referenceNow = new Date("2026-02-16T09:00:00.000Z");
+
+    // Both need partyInfo pre-set (confirmPartyInfo is now zero-arg)
+    const partyInfo = {
+      name: "Happy Birthday to Me",
+      dateTime: new Date("2026-02-22T13:00:00.000Z"),
+      location: "Rory's place",
+      allowContributions: false,
+    };
+
+    const toolCurrentData: Partial<WizardState> = { partyInfo };
+    const actionCurrentData: Partial<WizardState> = { partyInfo: { ...partyInfo } };
+
+    const tools = getWizardTools("party-info", {
+      db: {} as never,
+      userId: "test-user",
+      env: {} as never,
+      currentData: toolCurrentData,
+      sessionId: undefined,
+      referenceNow,
+      writer: { write: (chunk: unknown) => writesFromTool.push(chunk) } as unknown as Writable,
+    });
+
+    const confirmTool = tools.confirmPartyInfo as {
+      execute: (input: Record<string, unknown>) => Promise<Record<string, unknown>>;
+    };
+
+    const toolResult = await confirmTool.execute({});
+
+    const actionResult = await confirmPartyInfoAction({
+      db: {} as never,
+      userId: "test-user",
+      sessionId: undefined,
+      currentData: actionCurrentData,
+      writer: { write: (chunk: unknown) => writesFromAction.push(chunk) } as never,
+    });
 
     expect(toolResult).toMatchObject({
       success: true,

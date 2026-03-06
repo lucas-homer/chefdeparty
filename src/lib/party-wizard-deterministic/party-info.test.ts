@@ -22,11 +22,17 @@ describe("resolveDeterministicPartyInfoTurn", () => {
     if (!result.handled) return;
 
     expect(result.intent).toBe("confirm-party-info");
+    // First action is update-party-info, second is confirm-party-info
+    expect(result.actions).toHaveLength(2);
     expect(result.actions[0]).toMatchObject({
-      type: "confirm-party-info",
+      type: "update-party-info",
       payload: {
         name: "Happy Birthday to Me",
       },
+    });
+    expect(result.actions[1]).toMatchObject({
+      type: "confirm-party-info",
+      payload: {},
     });
   });
 
@@ -51,10 +57,14 @@ describe("resolveDeterministicPartyInfoTurn", () => {
 
     expect(result.intent).toBe("confirm-party-info");
     expect(result.actions[0]).toMatchObject({
-      type: "confirm-party-info",
+      type: "update-party-info",
       payload: {
         name: "Good luck Chelsea",
       },
+    });
+    expect(result.actions[1]).toMatchObject({
+      type: "confirm-party-info",
+      payload: {},
     });
   });
 
@@ -70,31 +80,40 @@ describe("resolveDeterministicPartyInfoTurn", () => {
 
     expect(result.intent).toBe("confirm-party-info");
     expect(result.actions[0]).toMatchObject({
-      type: "confirm-party-info",
+      type: "update-party-info",
       payload: {
         name: "Happy Birthday to Me",
         location: "Rory's place this Sunday at 1pm",
       },
     });
+    expect(result.actions[1]).toMatchObject({
+      type: "confirm-party-info",
+      payload: {},
+    });
   });
 
-  it("infers a default name for birthday context", () => {
+  it("falls through to model when name is only inferred (birthday party)", () => {
     const result = resolveDeterministicPartyInfoTurn({
       text: "I am having a birthday party this Sunday at 1pm",
       currentData: {},
       referenceNow: new Date("2026-02-16T09:00:00.000Z"),
     });
 
-    expect(result.handled).toBe(true);
-    if (!result.handled) return;
+    expect(result.handled).toBe(false);
+    if (result.handled) return;
+    expect(result.reason).toBe("low-confidence");
+  });
 
-    expect(result.intent).toBe("confirm-party-info");
-    expect(result.actions[0]).toMatchObject({
-      type: "confirm-party-info",
-      payload: {
-        name: "Birthday Party",
-      },
+  it("falls through to model when name is only inferred (party with specific name user provided)", () => {
+    const result = resolveDeterministicPartyInfoTurn({
+      text: "I'm having a party - St. Patty's Day Party - on March 17th at 3pm. It'll be at the Ojai Pub",
+      currentData: {},
+      referenceNow: new Date("2026-03-06T22:59:00.000Z"),
     });
+
+    expect(result.handled).toBe(false);
+    if (result.handled) return;
+    expect(result.reason).toBe("low-confidence");
   });
 
   it("asks for clarification when date-like text is unparseable", () => {
@@ -121,5 +140,102 @@ describe("resolveDeterministicPartyInfoTurn", () => {
       handled: true,
       intent: "ask-missing-name",
     });
+  });
+
+  it("handles time-only revision 'change the time so it starts at 5pm'", () => {
+    const existingDate = new Date("2026-03-17T15:00:00.000Z");
+    const result = resolveDeterministicPartyInfoTurn({
+      text: "change the time so it starts at 5pm",
+      currentData: {
+        partyInfo: {
+          name: "St. Patty's Day Party",
+          dateTime: existingDate,
+          location: "Ojai Pub",
+          description: undefined,
+          allowContributions: false,
+        },
+      },
+      referenceNow: new Date("2026-03-06T22:42:00.000Z"),
+    });
+
+    expect(result.handled).toBe(true);
+    if (!result.handled) return;
+
+    expect(result.intent).toBe("confirm-party-info");
+    expect(result.actions).toHaveLength(2);
+    expect(result.actions[0]).toMatchObject({
+      type: "update-party-info",
+      payload: {
+        name: "St. Patty's Day Party",
+      },
+    });
+    // The resolved time should be 5pm on the EXISTING date (March 17), not today
+    const resolvedDateTime = result.actions[0].type === "update-party-info"
+      ? result.actions[0].payload.resolvedDateTime
+      : undefined;
+    expect(resolvedDateTime).toBeInstanceOf(Date);
+    expect(resolvedDateTime!.getDate()).toBe(17);
+    expect(resolvedDateTime!.getMonth()).toBe(2); // March
+    expect(resolvedDateTime!.getHours()).toBe(17); // 5pm
+  });
+
+  it("handles time-only revision 'start at 2pm'", () => {
+    const existingDate = new Date("2026-07-04T18:00:00.000Z");
+    const result = resolveDeterministicPartyInfoTurn({
+      text: "start at 2pm",
+      currentData: {
+        partyInfo: {
+          name: "BBQ Party",
+          dateTime: existingDate,
+          location: "the backyard",
+          description: undefined,
+          allowContributions: true,
+        },
+      },
+      referenceNow: new Date("2026-03-06T12:00:00.000Z"),
+    });
+
+    expect(result.handled).toBe(true);
+    if (!result.handled) return;
+
+    expect(result.intent).toBe("confirm-party-info");
+    expect(result.actions).toHaveLength(2);
+    const resolvedDateTime = result.actions[0].type === "update-party-info"
+      ? result.actions[0].payload.resolvedDateTime
+      : undefined;
+    expect(resolvedDateTime).toBeInstanceOf(Date);
+    expect(resolvedDateTime!.getDate()).toBe(4); // July 4th preserved
+    expect(resolvedDateTime!.getMonth()).toBe(6); // July
+    expect(resolvedDateTime!.getHours()).toBe(14); // 2pm
+  });
+
+  it("handles time-only revision 'change the time to 7:30pm'", () => {
+    const existingDate = new Date("2026-02-22T13:00:00.000Z");
+    const result = resolveDeterministicPartyInfoTurn({
+      text: "change the time to 7:30pm",
+      currentData: {
+        partyInfo: {
+          name: "Happy Birthday to Me",
+          dateTime: existingDate,
+          location: "Rory's place",
+          description: undefined,
+          allowContributions: false,
+        },
+      },
+      referenceNow: new Date("2026-02-16T09:00:00.000Z"),
+    });
+
+    expect(result.handled).toBe(true);
+    if (!result.handled) return;
+
+    expect(result.intent).toBe("confirm-party-info");
+    expect(result.actions).toHaveLength(2);
+    const resolvedDateTime = result.actions[0].type === "update-party-info"
+      ? result.actions[0].payload.resolvedDateTime
+      : undefined;
+    expect(resolvedDateTime).toBeInstanceOf(Date);
+    expect(resolvedDateTime!.getDate()).toBe(22); // Feb 22 preserved
+    expect(resolvedDateTime!.getHours()).toBe(19); // 7pm
+    expect(resolvedDateTime!.getMinutes()).toBe(30);
   });
 });

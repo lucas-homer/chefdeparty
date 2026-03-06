@@ -1,4 +1,4 @@
-type ParsedTime = {
+export type ParsedTime = {
   hours: number;
   minutes: number;
 };
@@ -70,7 +70,7 @@ function applyTime(date: Date, parsedTime?: ParsedTime | null): Date {
   return date;
 }
 
-function parseTime(input: string): ParsedTime | null {
+export function parseTime(input: string): ParsedTime | null {
   const amPmMatch = input.match(/\b(\d{1,2})(?::(\d{2}))?\s*(am|pm)\b/i);
   if (amPmMatch) {
     const hour = Number(amPmMatch[1]);

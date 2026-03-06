@@ -18,15 +18,19 @@ export type GuestsDeterministicIntent =
 
 export type DeterministicAction =
   | {
-      type: "confirm-party-info";
+      type: "update-party-info";
       payload: {
-        name: string;
+        name?: string;
         dateTimeInput?: string;
         resolvedDateTime?: Date;
         location?: string;
         description?: string;
         allowContributions?: boolean;
       };
+    }
+  | {
+      type: "confirm-party-info";
+      payload: Record<string, never>;
     }
   | {
       type: "add-guest";

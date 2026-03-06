@@ -565,7 +565,7 @@ export function getConfirmationToolName(step: WizardStep): string {
  */
 export function getRevisionToolInstructions(step: WizardStep): string {
   const instructions: Record<WizardStep, string> = {
-    "party-info": `Call confirmPartyInfo with the corrected information.`,
+    "party-info": `Call updatePartyInfo with the changed fields, then call confirmPartyInfo.`,
     "guests": `If adding guests: call addGuest for each new guest, then call confirmGuestList.
 If removing guests: call removeGuest for each guest to remove, then call confirmGuestList.
 If just confirming: call confirmGuestList.`,

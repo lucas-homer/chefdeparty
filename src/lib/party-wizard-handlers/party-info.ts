@@ -33,7 +33,7 @@ import {
   updateLangfuseGeneration,
 } from "../langfuse";
 import { resolveDeterministicPartyInfoTurn } from "../party-wizard-deterministic/party-info";
-import { confirmPartyInfoAction } from "../party-wizard-actions/party-info";
+import { updatePartyInfoAction, confirmPartyInfoAction } from "../party-wizard-actions/party-info";
 
 export async function handlePartyInfoStep(ctx: HandlerContext): Promise<Response> {
   const {
@@ -82,7 +82,7 @@ export async function handlePartyInfoStep(ctx: HandlerContext): Promise<Response
 
 <date-resolution-context>
 Reference current datetime (ISO, UTC): ${referenceNowIso}
-When calling confirmPartyInfo:
+When calling updatePartyInfo:
 - Pass the user's natural date text in dateTimeInput (do NOT convert to ISO yourself).
 - The server will resolve dateTimeInput using the reference datetime above.
 </date-resolution-context>`;
@@ -185,36 +185,61 @@ Previous confirmation summary: "${pendingConfirmationRequest.summary}"`;
 
             const additionalParts: Array<Record<string, unknown>> = [];
             for (const action of deterministic.actions) {
-              if (action.type !== "confirm-party-info") continue;
-              const result = await confirmPartyInfoAction(
-                {
+              if (action.type === "update-party-info") {
+                const result = await updatePartyInfoAction(
+                  {
+                    db,
+                    userId: user.id,
+                    sessionId,
+                    currentData,
+                    referenceNow,
+                  },
+                  action.payload
+                );
+
+                if (!result.success) {
+                  await writeTextAndSave(writer, db, sessionId, step, result.error);
+                  updateLangfuseTrace(telemetry?.traceClient, {
+                    output: {
+                      decisionPath: "deterministic",
+                      deterministicHandled: true,
+                      deterministicIntent,
+                      deterministicActionError: result.error,
+                      modelTierUsed: "none",
+                    },
+                  });
+                  return;
+                }
+                continue;
+              }
+
+              if (action.type === "confirm-party-info") {
+                const result = await confirmPartyInfoAction({
                   db,
                   userId: user.id,
                   sessionId,
                   currentData,
-                  referenceNow,
-                },
-                action.payload
-              );
-
-              if (!result.success) {
-                await writeTextAndSave(writer, db, sessionId, step, result.error);
-                updateLangfuseTrace(telemetry?.traceClient, {
-                  output: {
-                    decisionPath: "deterministic",
-                    deterministicHandled: true,
-                    deterministicIntent,
-                    deterministicActionError: result.error,
-                    modelTierUsed: "none",
-                  },
                 });
-                return;
-              }
 
-              additionalParts.push({
-                type: "data-step-confirmation-request",
-                data: { request: result.request },
-              });
+                if (!result.success) {
+                  await writeTextAndSave(writer, db, sessionId, step, result.error);
+                  updateLangfuseTrace(telemetry?.traceClient, {
+                    output: {
+                      decisionPath: "deterministic",
+                      deterministicHandled: true,
+                      deterministicIntent,
+                      deterministicActionError: result.error,
+                      modelTierUsed: "none",
+                    },
+                  });
+                  return;
+                }
+
+                additionalParts.push({
+                  type: "data-step-confirmation-request",
+                  data: { request: result.request },
+                });
+              }
             }
 
             await writeTextAndSave(
@@ -322,9 +347,7 @@ Previous confirmation summary: "${pendingConfirmationRequest.summary}"`;
             system: attemptSystemPrompt,
             messages: modelMessages,
             tools,
-            toolChoice: isRevisionRequest && confirmationToolName
-              ? { type: "tool", toolName: confirmationToolName }
-              : undefined,
+            toolChoice: undefined,
             stopWhen: [stepCountIs(10), hasToolCall(confirmationToolName)],
             experimental_telemetry: buildTelemetrySettings(
               telemetry,

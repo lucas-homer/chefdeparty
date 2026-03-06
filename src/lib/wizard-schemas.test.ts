@@ -1,9 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { addGuestToolSchema, confirmPartyInfoToolSchema, guestDataSchema } from "./wizard-schemas";
+import { addGuestToolSchema, updatePartyInfoToolSchema, confirmPartyInfoToolSchema, guestDataSchema } from "./wizard-schemas";
 
-describe("confirmPartyInfoToolSchema", () => {
-  it("accepts natural-language date input via dateTimeInput", () => {
-    const result = confirmPartyInfoToolSchema.safeParse({
+describe("updatePartyInfoToolSchema", () => {
+  it("accepts all fields", () => {
+    const result = updatePartyInfoToolSchema.safeParse({
       name: "Sam's 30th",
       dateTimeInput: "this weekend on Saturday at 7pm",
       location: "My place",
@@ -12,21 +12,34 @@ describe("confirmPartyInfoToolSchema", () => {
     expect(result.success).toBe(true);
   });
 
-  it("accepts deprecated dateTime alias for backwards compatibility", () => {
-    const result = confirmPartyInfoToolSchema.safeParse({
-      name: "Dinner Party",
-      dateTime: "next Saturday at 6pm",
+  it("accepts a single field (name only)", () => {
+    const result = updatePartyInfoToolSchema.safeParse({
+      name: "Summer BBQ",
     });
 
     expect(result.success).toBe(true);
   });
 
-  it("rejects payloads without any date input", () => {
-    const result = confirmPartyInfoToolSchema.safeParse({
-      name: "Birthday",
+  it("accepts a single field (dateTimeInput only)", () => {
+    const result = updatePartyInfoToolSchema.safeParse({
+      dateTimeInput: "3pm",
     });
 
-    expect(result.success).toBe(false);
+    expect(result.success).toBe(true);
+  });
+
+  it("accepts an empty object", () => {
+    const result = updatePartyInfoToolSchema.safeParse({});
+
+    expect(result.success).toBe(true);
+  });
+});
+
+describe("confirmPartyInfoToolSchema", () => {
+  it("accepts empty object (zero-arg confirmation)", () => {
+    const result = confirmPartyInfoToolSchema.safeParse({});
+
+    expect(result.success).toBe(true);
   });
 });
 

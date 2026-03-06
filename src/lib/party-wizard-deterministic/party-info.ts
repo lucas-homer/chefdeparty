@@ -1,5 +1,5 @@
 import type { WizardState } from "../wizard-schemas";
-import { parsePartyDateTimeInput } from "../party-date-parser";
+import { parsePartyDateTimeInput, parseTime } from "../party-date-parser";
 import type {
   DeterministicHandledResult,
   DeterministicUnhandledResult,
@@ -82,9 +82,25 @@ export function resolveDeterministicPartyInfoTurn(
   const explicitName = extractQuotedName(text) || extractUnquotedName(text);
   const inferredName = explicitName ? undefined : inferName(text);
   const name = explicitName || existing?.name || inferredName;
+  const nameIsOnlyInferred = !explicitName && !existing?.name && !!inferredName;
 
   const parsedDate = parsePartyDateTimeInput(text, input.referenceNow || new Date());
-  const dateTime = parsedDate || (existing?.dateTime ? new Date(existing.dateTime) : undefined);
+
+  // Time-only revision: when the user says "change the time to 5pm" but there's
+  // no date component, merge the new time onto the existing date.
+  let dateTime: Date | undefined;
+  if (parsedDate) {
+    dateTime = parsedDate;
+  } else if (existing?.dateTime) {
+    const timeOnly = parseTime(text.toLowerCase());
+    if (timeOnly) {
+      const merged = new Date(existing.dateTime);
+      merged.setHours(timeOnly.hours, timeOnly.minutes, 0, 0);
+      dateTime = merged;
+    } else {
+      dateTime = new Date(existing.dateTime);
+    }
+  }
 
   const location = extractLocation(text) || existing?.location;
   const description = extractDescription(text) || existing?.description;
@@ -93,6 +109,14 @@ export function resolveDeterministicPartyInfoTurn(
   const hasDateSignal = DATE_SIGNAL_REGEX.test(text);
   const hasPartySignal = PARTY_SIGNAL_REGEX.test(text);
 
+  // When the name is only inferred (not explicitly extracted and not from existing data),
+  // fall through to the model. Inferred names like "Party" or "Birthday Party" are guesses
+  // from keyword matching — the model is strictly better at extracting the user's intended
+  // name, especially for phrasings we can't anticipate with regex.
+  if (nameIsOnlyInferred) {
+    return { handled: false, reason: "low-confidence" };
+  }
+
   if (name && dateTime) {
     return {
       handled: true,
@@ -100,7 +124,7 @@ export function resolveDeterministicPartyInfoTurn(
       assistantText: "Perfect! Let me confirm those party details.",
       actions: [
         {
-          type: "confirm-party-info",
+          type: "update-party-info",
           payload: {
             name,
             resolvedDateTime: dateTime,
@@ -108,6 +132,10 @@ export function resolveDeterministicPartyInfoTurn(
             description,
             allowContributions,
           },
+        },
+        {
+          type: "confirm-party-info",
+          payload: {},
         },
       ],
     };

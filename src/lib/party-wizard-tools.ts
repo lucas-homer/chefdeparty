@@ -11,6 +11,7 @@ import type {
   MenuPlanData,
 } from "./wizard-schemas";
 import {
+  updatePartyInfoToolSchema,
   confirmPartyInfoToolSchema,
   addGuestToolSchema,
   removeGuestToolSchema,
@@ -29,7 +30,7 @@ import { aiRecipeExtractionSchema } from "./schemas";
 import type { WizardMessage, StepConfirmationRequest } from "./wizard-message-types";
 import type { Env } from "../index";
 import type { createDb } from "./db";
-import { confirmPartyInfoAction } from "./party-wizard-actions/party-info";
+import { updatePartyInfoAction, confirmPartyInfoAction } from "./party-wizard-actions/party-info";
 import {
   addGuestAction,
   confirmGuestListAction,
@@ -263,27 +264,44 @@ export function getWizardTools(step: WizardStep, context: ToolContext): ToolSet 
   switch (step) {
     case "party-info":
       return {
-        confirmPartyInfo: tool({
+        updatePartyInfo: tool({
           description:
-            "Save and confirm the party details. Call this when you have gathered the required information (party name and date/time). This shows a confirmation dialog to the user.",
-          inputSchema: confirmPartyInfoToolSchema,
+            "Update the party details. Call this whenever the user provides or changes party information (name, date/time, location, etc.). Each field is optional — only include fields that are being set or changed.",
+          inputSchema: updatePartyInfoToolSchema,
           inputExamples: [
             { input: { name: "Sarah's 30th Birthday", dateTimeInput: "next Saturday at 7pm", location: "My apartment", allowContributions: true } },
-            { input: { name: "Summer BBQ", dateTimeInput: "July 4 at 4pm", description: "Casual backyard cookout", allowContributions: false } },
-            { input: { name: "Dinner Party", dateTimeInput: "this weekend on Saturday at 6:30pm", allowContributions: false } },
+            { input: { dateTimeInput: "3pm instead" } },
+            { input: { name: "Summer BBQ" } },
+            { input: { location: "the backyard" } },
           ] as const,
           execute: async (data) => {
-            return confirmPartyInfoAction(
+            return updatePartyInfoAction(
               {
                 db,
                 userId,
                 sessionId,
                 currentData,
                 referenceNow: context.referenceNow,
-                writer,
               },
               data
             );
+          },
+        }),
+        confirmPartyInfo: tool({
+          description:
+            "Show the party details confirmation dialog to the user. Call this AFTER setting all party details with updatePartyInfo. Reads from the current session state — no arguments needed.",
+          inputSchema: confirmPartyInfoToolSchema,
+          inputExamples: [
+            { input: {} },
+          ] as const,
+          execute: async () => {
+            return confirmPartyInfoAction({
+              db,
+              userId,
+              sessionId,
+              currentData,
+              writer,
+            });
           },
         }),
       };
