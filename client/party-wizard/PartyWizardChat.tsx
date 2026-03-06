@@ -1032,14 +1032,6 @@ function PartyWizardChatInner({
             data-testid="wizard-messages-scroll"
             className="flex-1 min-h-0 overflow-y-auto p-4 pb-44 space-y-4"
           >
-            {/* Welcome message for each step */}
-            {messages.length === 0 && (
-              <div className="text-center text-muted-foreground py-8">
-                <p className="text-lg font-medium">{getStepWelcome(currentStep)}</p>
-                <p className="text-sm mt-2">{getStepInstructions(currentStep)}</p>
-              </div>
-            )}
-
             {/* Recipe Picker for menu step */}
             {currentStep === "menu" && (
               <RecipePicker onSelectRecipe={handleRecipeSelect} selectedRecipeIds={selectedRecipeIds} />
@@ -1332,32 +1324,6 @@ function formatTimelineDay(daysBeforeParty: number): string {
   if (daysBeforeParty === 0) return "Day of party";
   if (daysBeforeParty === 1) return "1 day before";
   return `${daysBeforeParty} days before`;
-}
-
-function getStepWelcome(step: WizardStep): string {
-  switch (step) {
-    case "party-info":
-      return "Let's plan your party!";
-    case "guests":
-      return "Who's coming?";
-    case "menu":
-      return "What's on the menu?";
-    case "timeline":
-      return "Let's create your cooking timeline!";
-  }
-}
-
-function getStepInstructions(step: WizardStep): string {
-  switch (step) {
-    case "party-info":
-      return "Tell me about your event - what's the occasion, when is it, and where?";
-    case "guests":
-      return "Add your guests with their email or phone. You can always add more later.";
-    case "menu":
-      return "Pick recipes from your library, paste a URL, upload an image, or describe a dish.";
-    case "timeline":
-      return "I'll create a cooking schedule based on your menu. We'll work backwards from party time.";
-  }
 }
 
 function getInputPlaceholder(step: WizardStep): string {

@@ -34,6 +34,7 @@ import {
   stripLargeDataForStorage,
   loadStepMessages,
   saveUserMessage,
+  saveAssistantMessage,
   findPendingConfirmationRequest,
   type HandlerContext,
 } from "../../lib/party-wizard-handlers";
@@ -44,6 +45,7 @@ import {
   updateLangfuseTrace,
 } from "../../lib/langfuse";
 import { normalizeWizardCompletePayload } from "../../lib/wizard-complete-normalization";
+import { getStepIntroMessage } from "../../lib/party-wizard-intro-messages";
 import { flushLangfuseTelemetry } from "../../lib/otel";
 
 type Variables = {
@@ -170,6 +172,16 @@ const partyWizardRoutes = new Hono<AppContext>()
         )
         .orderBy(wizardMessages.createdAt);
 
+      // If no messages for this step, insert an intro message
+      if (stepMessages.length === 0) {
+        const introMessage = getStepIntroMessage(existingSession.currentStep as WizardStep);
+        await saveAssistantMessage(db, existingSession.id, existingSession.currentStep as WizardStep, introMessage);
+        return c.json({
+          session: deserializeWizardSession(existingSession),
+          messages: [introMessage],
+        });
+      }
+
       // Deserialize session for client (converts string dates to Date objects)
       return c.json({
         session: deserializeWizardSession(existingSession),
@@ -188,9 +200,13 @@ const partyWizardRoutes = new Hono<AppContext>()
       })
       .returning();
 
+    // Insert intro message for new session
+    const introMessage = getStepIntroMessage("party-info");
+    await saveAssistantMessage(db, newSession.id, "party-info", introMessage);
+
     return c.json({
       session: deserializeWizardSession(newSession),
-      messages: [],
+      messages: [introMessage],
     });
   })
 
@@ -249,9 +265,13 @@ const partyWizardRoutes = new Hono<AppContext>()
       })
       .returning();
 
+    // Insert intro message for new session
+    const introMessage = getStepIntroMessage("party-info");
+    await saveAssistantMessage(db, newSession.id, "party-info", introMessage);
+
     return c.json({
       session: deserializeWizardSession(newSession),
-      messages: [],
+      messages: [introMessage],
     });
   })
 
@@ -291,6 +311,16 @@ const partyWizardRoutes = new Hono<AppContext>()
         )
       )
       .orderBy(wizardMessages.createdAt);
+
+    // If no messages for this step, insert an intro message
+    if (stepMessages.length === 0) {
+      const introMessage = getStepIntroMessage(step);
+      await saveAssistantMessage(db, sessionId, step, introMessage);
+      return c.json({
+        session: deserializeWizardSession(updatedSession),
+        messages: [introMessage],
+      });
+    }
 
     return c.json({
       session: deserializeWizardSession(updatedSession),
