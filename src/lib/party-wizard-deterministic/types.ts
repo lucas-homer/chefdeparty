@@ -8,6 +8,7 @@ export type PartyInfoDeterministicIntent =
   | "confirm-party-info"
   | "ask-missing-name"
   | "ask-missing-datetime"
+  | "ask-missing-time"
   | "ask-unparseable-datetime";
 
 export type GuestsDeterministicIntent =
@@ -18,15 +19,19 @@ export type GuestsDeterministicIntent =
 
 export type DeterministicAction =
   | {
-      type: "confirm-party-info";
+      type: "update-party-info";
       payload: {
-        name: string;
+        name?: string;
         dateTimeInput?: string;
         resolvedDateTime?: Date;
         location?: string;
         description?: string;
         allowContributions?: boolean;
       };
+    }
+  | {
+      type: "confirm-party-info";
+      payload: Record<string, never>;
     }
   | {
       type: "add-guest";
@@ -57,4 +62,6 @@ export type DeterministicHandledResult<TIntent extends string> = {
 export type DeterministicUnhandledResult = {
   handled: false;
   reason: DeterministicUnhandledReason;
+  /** Actions to execute even though the turn is unhandled (e.g., saving partial data before model fallback) */
+  partialActions?: DeterministicAction[];
 };

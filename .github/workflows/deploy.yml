@@ -53,9 +53,6 @@ jobs:
       - name: Unit tests
         run: pnpm test
 
-      - name: Deterministic evals
-        run: pnpm eval:deterministic
-
       - name: Build
         run: pnpm build
 

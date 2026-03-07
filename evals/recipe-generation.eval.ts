@@ -1,9 +1,16 @@
+import "./setup-env";
 import { evalite, createScorer } from "evalite";
 import { generateText } from "ai";
 import { google } from "@ai-sdk/google";
-import { Levenshtein } from "autoevals";
+// Note: Levenshtein from autoevals is not compatible with evalite 0.7.x scorers format
 
 const hasGoogleApiKey = Boolean(process.env.GOOGLE_GENERATIVE_AI_API_KEY);
+
+/** Strip markdown code fences (```json ... ```) that Gemini often wraps around JSON. */
+function extractJson(text: string): string {
+  const fenced = text.match(/```(?:json)?\s*\n?([\s\S]*?)```/);
+  return fenced ? fenced[1].trim() : text.trim();
+}
 
 // Test cases for recipe generation
 const recipePrompts = [
@@ -147,7 +154,7 @@ ${input.maxPrepTime ? `Maximum prep time: ${input.maxPrepTime} minutes` : ""}`;
       });
 
       try {
-        return JSON.parse(result.text);
+        return JSON.parse(extractJson(result.text));
       } catch {
         return { error: "Failed to parse JSON", raw: result.text };
       }
@@ -174,7 +181,7 @@ Servings: ${input.servings}`;
         });
 
         try {
-          return JSON.parse(result.text);
+          return JSON.parse(extractJson(result.text));
         } catch {
           return { error: "Failed to parse JSON", raw: result.text };
         }
@@ -184,9 +191,16 @@ Servings: ${input.servings}`;
           name: "Valid JSON Output",
           scorer: async ({ output }) => (output.error ? 0 : 1),
         }),
-        Levenshtein({
-          output: "name",
-          expected: "A vegetarian pasta dish",
+        createScorer({
+          name: "Recipe Name Relevance",
+          description: "Check recipe name relates to the request",
+          scorer: async ({ output }) => {
+            if (output.error || !output.name) return 0;
+            const name = output.name.toLowerCase();
+            // Check if name relates to vegetarian/pasta concepts
+            const keywords = ["pasta", "vegetarian", "veggie", "penne", "spaghetti", "linguine", "fettuccine", "noodle", "rigatoni", "fusilli", "garden", "primavera"];
+            return keywords.some((k) => name.includes(k)) ? 1 : 0.5;
+          },
         }),
       ],
     });

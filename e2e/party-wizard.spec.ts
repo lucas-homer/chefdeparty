@@ -238,7 +238,7 @@ test.describe("Party Wizard", () => {
     await page.getByRole("button", { name: /let's chat/i }).click();
 
     const input = page.getByPlaceholder(/describe your party/i);
-    await input.fill("I'm having a going-away party for Chelsea this Saturday at 7pm at Cara's house.");
+    await input.fill("I'm having a party called \"Chelsea's Going-away\" this Saturday at 7pm at Cara's house.");
     await page.getByRole("button", { name: "Send message" }).click();
     await expect(page.getByText(/please confirm party-info/i)).toBeVisible({ timeout: 15000 });
 
@@ -458,7 +458,7 @@ test.describe("Party Wizard - Chat Interaction", () => {
 
     // Complete party-info step
     const partyInfoInput = page.getByPlaceholder(/describe your party/i);
-    await partyInfoInput.fill("Dinner party next Saturday at 6pm in San Francisco");
+    await partyInfoInput.fill("I'm having a party called \"Dinner Party\" next Saturday at 6pm in San Francisco");
     await page.getByRole("button", { name: "Send message" }).click();
 
     await expect(page.getByRole("heading", { name: /please confirm party-info/i })).toBeVisible({

@@ -240,6 +240,21 @@ export function getSilentCompletionFallbackMessage(finishReason?: string): strin
   return "I hit a temporary issue and did not send a usable response. I still received your message. Please send \"continue\" and I will keep going.";
 }
 
+/**
+ * Step-specific fallback text for when the model calls tools but produces no
+ * visible text. The user only sees text parts and data parts — tool results
+ * go to the model, so without fallback text the user sees an empty message.
+ */
+export function getToolCallFallbackText(step: WizardStep): string {
+  const fallbacks: Record<WizardStep, string> = {
+    "party-info": "Got it! What else can you tell me about the party?",
+    "guests": "Added! Anyone else to invite?",
+    "menu": "Added to the menu! What else sounds good?",
+    "timeline": "Updated! Anything else to adjust?",
+  };
+  return fallbacks[step] || "Got it!";
+}
+
 // ============================================
 // Session Loading Utilities
 // ============================================
@@ -565,7 +580,7 @@ export function getConfirmationToolName(step: WizardStep): string {
  */
 export function getRevisionToolInstructions(step: WizardStep): string {
   const instructions: Record<WizardStep, string> = {
-    "party-info": `Call confirmPartyInfo with the corrected information.`,
+    "party-info": `Call updatePartyInfo with the changed fields, then call confirmPartyInfo.`,
     "guests": `If adding guests: call addGuest for each new guest, then call confirmGuestList.
 If removing guests: call removeGuest for each guest to remove, then call confirmGuestList.
 If just confirming: call confirmGuestList.`,
