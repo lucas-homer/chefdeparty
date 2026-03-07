@@ -1,6 +1,7 @@
 import type { WizardState } from "../wizard-schemas";
 import { parsePartyDateTimeInput, parseTime } from "../party-date-parser";
 import type {
+  DeterministicAction,
   DeterministicHandledResult,
   DeterministicUnhandledResult,
   PartyInfoDeterministicIntent,
@@ -84,7 +85,14 @@ export function resolveDeterministicPartyInfoTurn(
   const name = explicitName || existing?.name || inferredName;
   const nameIsOnlyInferred = !explicitName && !existing?.name && !!inferredName;
 
-  const parsedDate = parsePartyDateTimeInput(text, input.referenceNow || new Date());
+  // When an explicit name was extracted (via "call it X" / "named X" patterns),
+  // strip the name from the text before date parsing. This prevents false positives
+  // like "Call it Easter Sunday Brunch" where "Sunday" is part of the name, not a date.
+  const textForDateParsing = explicitName
+    ? text.replace(explicitName, "").trim()
+    : text;
+
+  const parsedDate = parsePartyDateTimeInput(textForDateParsing, input.referenceNow || new Date());
 
   // Time-only revision: when the user says "change the time to 5pm" but there's
   // no date component, merge the new time onto the existing date.
@@ -106,15 +114,28 @@ export function resolveDeterministicPartyInfoTurn(
   const description = extractDescription(text) || existing?.description;
   const allowContributions = extractAllowContributions(text) ?? existing?.allowContributions ?? false;
 
-  const hasDateSignal = DATE_SIGNAL_REGEX.test(text);
+  const hasDateSignal = DATE_SIGNAL_REGEX.test(textForDateParsing);
   const hasPartySignal = PARTY_SIGNAL_REGEX.test(text);
 
   // When the name is only inferred (not explicitly extracted and not from existing data),
   // fall through to the model. Inferred names like "Party" or "Birthday Party" are guesses
   // from keyword matching — the model is strictly better at extracting the user's intended
   // name, especially for phrasings we can't anticipate with regex.
+  // However, save any successfully extracted partial data (dateTime, location) so it persists
+  // even if the model doesn't call updatePartyInfo.
   if (nameIsOnlyInferred) {
-    return { handled: false, reason: "low-confidence" };
+    const partialActions: DeterministicAction[] = [];
+    if (dateTime || location || description) {
+      partialActions.push({
+        type: "update-party-info",
+        payload: { resolvedDateTime: dateTime, location, description, allowContributions },
+      });
+    }
+    return {
+      handled: false,
+      reason: "low-confidence",
+      partialActions: partialActions.length > 0 ? partialActions : undefined,
+    };
   }
 
   if (name && dateTime) {
@@ -142,12 +163,18 @@ export function resolveDeterministicPartyInfoTurn(
   }
 
   if (name && !dateTime) {
+    // Save extracted name (and any other partial data) so it persists for the next turn
+    const partialSaveAction: DeterministicAction = {
+      type: "update-party-info",
+      payload: { name, location, description, allowContributions },
+    };
+
     if (hasDateSignal) {
       return {
         handled: true,
         intent: "ask-unparseable-datetime",
         assistantText: "I couldn't quite parse the date/time. Can you share it like \"Saturday at 7pm\" or \"March 15 at 6pm\"?",
-        actions: [],
+        actions: [partialSaveAction],
       };
     }
 
@@ -155,7 +182,7 @@ export function resolveDeterministicPartyInfoTurn(
       handled: true,
       intent: "ask-missing-datetime",
       assistantText: `Great name. When is "${name}" happening?`,
-      actions: [],
+      actions: [partialSaveAction],
     };
   }
 
@@ -164,7 +191,13 @@ export function resolveDeterministicPartyInfoTurn(
       handled: true,
       intent: "ask-missing-name",
       assistantText: "Nice, I have the timing. What would you like to call this party?",
-      actions: [],
+      // Save extracted datetime and location so they persist for the next turn
+      actions: [
+        {
+          type: "update-party-info",
+          payload: { resolvedDateTime: dateTime, location, description, allowContributions },
+        },
+      ],
     };
   }
 

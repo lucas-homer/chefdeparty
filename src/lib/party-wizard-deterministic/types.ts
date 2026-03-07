@@ -61,4 +61,6 @@ export type DeterministicHandledResult<TIntent extends string> = {
 export type DeterministicUnhandledResult = {
   handled: false;
   reason: DeterministicUnhandledReason;
+  /** Actions to execute even though the turn is unhandled (e.g., saving partial data before model fallback) */
+  partialActions?: DeterministicAction[];
 };

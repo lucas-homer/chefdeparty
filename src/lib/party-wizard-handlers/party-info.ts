@@ -264,6 +264,25 @@ Previous confirmation summary: "${pendingConfirmationRequest.summary}"`;
           }
 
           deterministicReason = deterministic.reason;
+
+          // Execute partial actions even on unhandled results (e.g., saving date/location
+          // before falling through to model on low-confidence name inference)
+          if (deterministic.partialActions?.length) {
+            for (const action of deterministic.partialActions) {
+              if (action.type === "update-party-info") {
+                await updatePartyInfoAction(
+                  {
+                    db,
+                    userId: user.id,
+                    sessionId,
+                    currentData,
+                    referenceNow,
+                  },
+                  action.payload
+                );
+              }
+            }
+          }
         }
 
         const forcedSilentFinishReason = debug?.forceSilentFinishReason;
