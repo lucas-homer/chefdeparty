@@ -3,6 +3,11 @@ export type ParsedTime = {
   minutes: number;
 };
 
+export type DateTimeParseResult = {
+  date: Date;
+  hasExplicitTime: boolean;
+};
+
 const WEEKDAY_INDEX: Record<string, number> = {
   sun: 0,
   sunday: 0,
@@ -180,15 +185,18 @@ function parseMonthDayDate(input: string, now: Date, parsedTime: ParsedTime | nu
   return candidate;
 }
 
-export function parsePartyDateTimeInput(input: string, now: Date = new Date()): Date | null {
+export function parsePartyDateTimeInput(input: string, now: Date = new Date()): DateTimeParseResult | null {
   const trimmed = input.trim();
   if (!trimmed) return null;
 
   const directParse = new Date(trimmed);
   if (!Number.isNaN(directParse.getTime())) {
     const hasExplicitYear = /\b\d{4}\b/.test(trimmed);
+    // Check if the raw input contains an explicit time component
+    const hasTime = parseTime(trimmed.toLowerCase()) !== null || /T\d{2}:\d{2}/.test(trimmed);
+
     if (hasExplicitYear || directParse.getTime() > now.getTime()) {
-      return directParse;
+      return { date: directParse, hasExplicitTime: hasTime };
     }
 
     // If the user omitted the year and the date would be in the past, shift to next year.
@@ -196,22 +204,23 @@ export function parsePartyDateTimeInput(input: string, now: Date = new Date()): 
     while (nextYear.getTime() <= now.getTime()) {
       nextYear.setFullYear(nextYear.getFullYear() + 1);
     }
-    return nextYear;
+    return { date: nextYear, hasExplicitTime: hasTime };
   }
 
   const lowered = trimmed.toLowerCase();
   const parsedTime = parseTime(lowered);
+  const hasExplicitTime = parsedTime !== null;
 
   // Try month-day BEFORE relative weekday — "April 5th" is more specific than "Sunday".
   // This ensures "Sunday, April 5th at 1pm" resolves to April 5, not the next Sunday.
   const monthDayDate = parseMonthDayDate(lowered, now, parsedTime);
   if (monthDayDate) {
-    return monthDayDate;
+    return { date: monthDayDate, hasExplicitTime };
   }
 
   const relativeDate = parseRelativeDate(lowered, now, parsedTime);
   if (relativeDate) {
-    return relativeDate;
+    return { date: relativeDate, hasExplicitTime };
   }
 
   return null;

@@ -53,7 +53,7 @@ export async function updatePartyInfoAction(
         error: "I couldn't understand that date/time. Please provide a specific date (e.g., \"Saturday at 7pm\" or \"March 15 at 6pm\").",
       };
     }
-    parsedDate = parsed;
+    parsedDate = parsed.date;
   }
 
   // Merge with existing data

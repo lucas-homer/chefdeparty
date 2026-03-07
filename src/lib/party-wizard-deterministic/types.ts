@@ -8,6 +8,7 @@ export type PartyInfoDeterministicIntent =
   | "confirm-party-info"
   | "ask-missing-name"
   | "ask-missing-datetime"
+  | "ask-missing-time"
   | "ask-unparseable-datetime";
 
 export type GuestsDeterministicIntent =

@@ -22,6 +22,7 @@ import {
   getConfirmationToolName,
   getRevisionToolInstructions,
   getSilentCompletionFallbackMessage,
+  getToolCallFallbackText,
   isSilentModelCompletion,
   isStep12DeterministicEnabled,
   writeTextAndSave,
@@ -483,6 +484,76 @@ Your previous attempt returned no visible response. Provide a concise user-visib
           : undefined;
         if (fallbackMessage) {
           await writeTextAndSave(writer, db, sessionId, step, fallbackMessage);
+        }
+
+        // Auto-confirm: when the model called updatePartyInfo and all required
+        // fields are now set, trigger confirmation server-side to eliminate the
+        // extra round trip of waiting for the model to chain confirmPartyInfo.
+        let autoConfirmed = false;
+        if (!fallbackMessage) {
+          const calledUpdate = finalAttempt.toolCalls.some(
+            (tc: { toolName: string }) => tc.toolName === "updatePartyInfo"
+          );
+          const calledConfirm = finalAttempt.toolCalls.some(
+            (tc: { toolName: string }) => tc.toolName === confirmationToolName
+          );
+
+          // Don't auto-confirm if the time is midnight (likely defaulted, not intentional)
+          const partyDateTime = currentData.partyInfo?.dateTime
+            ? new Date(currentData.partyInfo.dateTime)
+            : null;
+          const timeIsMidnight = partyDateTime &&
+            partyDateTime.getHours() === 0 &&
+            partyDateTime.getMinutes() === 0;
+
+          if (
+            calledUpdate &&
+            !calledConfirm &&
+            currentData.partyInfo?.name &&
+            currentData.partyInfo?.dateTime &&
+            !timeIsMidnight
+          ) {
+            const confirmResult = await confirmPartyInfoAction({
+              db,
+              userId: user.id,
+              sessionId,
+              currentData,
+            });
+
+            if (confirmResult.success) {
+              autoConfirmed = true;
+              const needsText = finalAttempt.responseText.trim().length === 0;
+              if (needsText) {
+                await writeTextAndSave(writer, db, sessionId, step, "Sounds great!", [
+                  { type: "data-step-confirmation-request", data: { request: confirmResult.request } },
+                ]);
+              } else {
+                writer.write({
+                  type: "data-step-confirmation-request",
+                  data: { request: confirmResult.request },
+                } as never);
+              }
+            }
+          }
+        }
+
+        // Fallback text: when the model called tools but produced no visible
+        // text (and auto-confirm didn't already handle it above), ensure the
+        // user sees something.
+        if (
+          !fallbackMessage &&
+          !autoConfirmed &&
+          !finalAttempt.isSilentCompletion &&
+          finalAttempt.responseText.trim().length === 0 &&
+          finalAttempt.toolCalls.length > 0
+        ) {
+          await writeTextAndSave(
+            writer,
+            db,
+            sessionId,
+            step,
+            getToolCallFallbackText(step)
+          );
         }
 
         updateLangfuseTrace(telemetry?.traceClient, {

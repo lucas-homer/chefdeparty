@@ -3,6 +3,7 @@ import {
   buildTelemetrySettings,
   filterMessagesForAI,
   getSilentCompletionFallbackMessage,
+  getToolCallFallbackText,
   hashImageData,
   isSilentModelCompletion,
   stripLargeDataForStorage,
@@ -166,6 +167,24 @@ describe("party-wizard handler utils", () => {
 
     it("returns a generic retry message for provider interruptions", () => {
       expect(getSilentCompletionFallbackMessage("other")).toContain("temporary issue");
+    });
+  });
+
+  describe("getToolCallFallbackText", () => {
+    it("returns step-specific text for party-info", () => {
+      expect(getToolCallFallbackText("party-info")).toContain("party");
+    });
+
+    it("returns step-specific text for guests", () => {
+      expect(getToolCallFallbackText("guests")).toContain("invite");
+    });
+
+    it("returns step-specific text for menu", () => {
+      expect(getToolCallFallbackText("menu")).toContain("menu");
+    });
+
+    it("returns step-specific text for timeline", () => {
+      expect(getToolCallFallbackText("timeline")).toContain("adjust");
     });
   });
 

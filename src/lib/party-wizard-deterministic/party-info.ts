@@ -82,29 +82,47 @@ export function resolveDeterministicPartyInfoTurn(
   const existing = input.currentData.partyInfo || null;
   const explicitName = extractQuotedName(text) || extractUnquotedName(text);
   const inferredName = explicitName ? undefined : inferName(text);
-  const name = explicitName || existing?.name || inferredName;
-  const nameIsOnlyInferred = !explicitName && !existing?.name && !!inferredName;
+
+  // Context-aware name detection: if we already have a dateTime but no name
+  // (i.e. we just asked "What would you like to call this party?"), and the
+  // user's response looks like a name, treat the entire text as the name.
+  // Only reject if the text has time-specific patterns (e.g. "7pm", "at 3")
+  // that indicate scheduling info — standalone day names like "Sunday" in
+  // "Easter Sunday Brunch" should NOT disqualify it.
+  const waitingForName = existing?.dateTime && !existing?.name;
+  const hasTimeSignal = /\b\d{1,2}(?::\d{2})?\s*(?:am|pm)\b/i.test(text) || /\bat\s+\d/i.test(text);
+  const contextualName = (waitingForName && !explicitName && !hasTimeSignal && text.length >= 2 && text.length <= 80)
+    ? text
+    : undefined;
+
+  const name = explicitName || existing?.name || contextualName || inferredName;
+  const nameIsOnlyInferred = !explicitName && !existing?.name && !contextualName && !!inferredName;
 
   // When an explicit name was extracted (via "call it X" / "named X" patterns),
   // strip the name from the text before date parsing. This prevents false positives
   // like "Call it Easter Sunday Brunch" where "Sunday" is part of the name, not a date.
   const textForDateParsing = explicitName
     ? text.replace(explicitName, "").trim()
-    : text;
+    : contextualName
+      ? "" // entire text is the name, don't parse dates from it
+      : text;
 
-  const parsedDate = parsePartyDateTimeInput(textForDateParsing, input.referenceNow || new Date());
+  const parsedResult = parsePartyDateTimeInput(textForDateParsing, input.referenceNow || new Date());
 
   // Time-only revision: when the user says "change the time to 5pm" but there's
   // no date component, merge the new time onto the existing date.
   let dateTime: Date | undefined;
-  if (parsedDate) {
-    dateTime = parsedDate;
+  let timeExplicitlySetThisTurn = false;
+  if (parsedResult) {
+    dateTime = parsedResult.date;
+    timeExplicitlySetThisTurn = parsedResult.hasExplicitTime;
   } else if (existing?.dateTime) {
     const timeOnly = parseTime(text.toLowerCase());
     if (timeOnly) {
       const merged = new Date(existing.dateTime);
       merged.setHours(timeOnly.hours, timeOnly.minutes, 0, 0);
       dateTime = merged;
+      timeExplicitlySetThisTurn = true;
     } else {
       dateTime = new Date(existing.dateTime);
     }
@@ -138,7 +156,15 @@ export function resolveDeterministicPartyInfoTurn(
     };
   }
 
-  if (name && dateTime) {
+  // Check if the time is missing: we have a date but no explicit time was set,
+  // and the time defaulted to midnight (00:00). Ask the user for the time rather
+  // than confirming with an obviously wrong default.
+  const needsTime = dateTime &&
+    !timeExplicitlySetThisTurn &&
+    dateTime.getHours() === 0 &&
+    dateTime.getMinutes() === 0;
+
+  if (name && dateTime && !needsTime) {
     return {
       handled: true,
       intent: "confirm-party-info",
@@ -157,6 +183,26 @@ export function resolveDeterministicPartyInfoTurn(
         {
           type: "confirm-party-info",
           payload: {},
+        },
+      ],
+    };
+  }
+
+  if (name && dateTime && needsTime) {
+    return {
+      handled: true,
+      intent: "ask-missing-time",
+      assistantText: `Got it, "${name}." What time should it start?`,
+      actions: [
+        {
+          type: "update-party-info",
+          payload: {
+            name,
+            resolvedDateTime: dateTime,
+            location,
+            description,
+            allowContributions,
+          },
         },
       ],
     };
@@ -201,7 +247,7 @@ export function resolveDeterministicPartyInfoTurn(
     };
   }
 
-  if (hasDateSignal && !parsedDate) {
+  if (hasDateSignal && !parsedResult) {
     return {
       handled: true,
       intent: "ask-unparseable-datetime",

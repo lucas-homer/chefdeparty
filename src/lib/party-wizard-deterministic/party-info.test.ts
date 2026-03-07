@@ -362,6 +362,189 @@ describe("resolveDeterministicPartyInfoTurn", () => {
     expect(resolvedDateTime!.getHours()).toBe(14); // 2pm
   });
 
+  it("multi-turn: plain name answer after ask-missing-name (e.g. 'Easter Brunch')", () => {
+    // User's first turn provided date, resolver asked "What would you like to call this party?"
+    // User responds with just the name — no "call it" pattern, no party keywords.
+    const existingDate = new Date("2026-04-05T12:00:00.000Z");
+    const result = resolveDeterministicPartyInfoTurn({
+      text: "Easter Brunch",
+      currentData: {
+        partyInfo: {
+          name: undefined as unknown as string,
+          dateTime: existingDate,
+          location: undefined,
+          description: undefined,
+          allowContributions: false,
+        },
+      },
+      referenceNow: new Date("2026-03-07T04:05:00.000Z"),
+    });
+
+    expect(result.handled).toBe(true);
+    if (!result.handled) return;
+
+    expect(result.intent).toBe("confirm-party-info");
+    expect(result.actions).toHaveLength(2);
+    expect(result.actions[0]).toMatchObject({
+      type: "update-party-info",
+      payload: {
+        name: "Easter Brunch",
+      },
+    });
+    expect(result.actions[1]).toMatchObject({
+      type: "confirm-party-info",
+      payload: {},
+    });
+  });
+
+  it("multi-turn: plain name with date words after ask-missing-name (e.g. 'Easter Sunday Brunch')", () => {
+    const existingDate = new Date("2026-04-05T12:00:00.000Z");
+    const result = resolveDeterministicPartyInfoTurn({
+      text: "Easter Sunday Brunch",
+      currentData: {
+        partyInfo: {
+          name: undefined as unknown as string,
+          dateTime: existingDate,
+          location: undefined,
+          description: undefined,
+          allowContributions: false,
+        },
+      },
+      referenceNow: new Date("2026-03-07T04:05:00.000Z"),
+    });
+
+    expect(result.handled).toBe(true);
+    if (!result.handled) return;
+
+    expect(result.intent).toBe("confirm-party-info");
+    expect(result.actions).toHaveLength(2);
+    expect(result.actions[0]).toMatchObject({
+      type: "update-party-info",
+      payload: {
+        name: "Easter Sunday Brunch",
+      },
+    });
+  });
+
+  it("asks for time when name + date are present but no explicit time", () => {
+    const result = resolveDeterministicPartyInfoTurn({
+      text: 'I am having a birthday party called "Happy Birthday to Me" this Sunday',
+      currentData: {},
+      referenceNow: new Date("2026-02-16T09:00:00.000Z"),
+    });
+
+    expect(result.handled).toBe(true);
+    if (!result.handled) return;
+
+    expect(result.intent).toBe("ask-missing-time");
+    expect(result.actions).toHaveLength(1);
+    expect(result.actions[0]).toMatchObject({
+      type: "update-party-info",
+      payload: {
+        name: "Happy Birthday to Me",
+      },
+    });
+    // Date should be saved even though time is missing
+    const payload = result.actions[0].type === "update-party-info"
+      ? result.actions[0].payload
+      : undefined;
+    expect(payload?.resolvedDateTime).toBeInstanceOf(Date);
+    expect(payload?.resolvedDateTime!.getDay()).toBe(0); // Sunday
+  });
+
+  it("multi-turn: asks for time when contextual name given but existing date is midnight", () => {
+    // User previously said "Sunday, April 5th" → saved date at midnight (no time).
+    // Now user provides the name. Should ask for time, not confirm with midnight.
+    const existingDate = new Date(2026, 3, 5); // April 5, midnight LOCAL
+    const result = resolveDeterministicPartyInfoTurn({
+      text: "Easter Brunch",
+      currentData: {
+        partyInfo: {
+          name: undefined as unknown as string,
+          dateTime: existingDate,
+          location: undefined,
+          description: undefined,
+          allowContributions: false,
+        },
+      },
+      referenceNow: new Date("2026-03-07T04:05:00.000Z"),
+    });
+
+    expect(result.handled).toBe(true);
+    if (!result.handled) return;
+
+    expect(result.intent).toBe("ask-missing-time");
+    expect(result.actions).toHaveLength(1);
+    expect(result.actions[0]).toMatchObject({
+      type: "update-party-info",
+      payload: {
+        name: "Easter Brunch",
+      },
+    });
+  });
+
+  it("multi-turn: confirms after user provides time following ask-missing-time", () => {
+    // Existing: name + dateTime at midnight (no time set yet)
+    // User says "1pm" → time-only revision → should confirm
+    const existingDate = new Date(2026, 3, 5); // April 5, midnight
+    const result = resolveDeterministicPartyInfoTurn({
+      text: "1pm",
+      currentData: {
+        partyInfo: {
+          name: "Easter Brunch",
+          dateTime: existingDate,
+          location: undefined,
+          description: undefined,
+          allowContributions: false,
+        },
+      },
+      referenceNow: new Date("2026-03-07T04:10:00.000Z"),
+    });
+
+    expect(result.handled).toBe(true);
+    if (!result.handled) return;
+
+    expect(result.intent).toBe("confirm-party-info");
+    expect(result.actions).toHaveLength(2);
+    const resolvedDateTime = result.actions[0].type === "update-party-info"
+      ? result.actions[0].payload.resolvedDateTime
+      : undefined;
+    expect(resolvedDateTime).toBeInstanceOf(Date);
+    expect(resolvedDateTime!.getDate()).toBe(5); // April 5 preserved
+    expect(resolvedDateTime!.getMonth()).toBe(3); // April
+    expect(resolvedDateTime!.getHours()).toBe(13); // 1pm
+  });
+
+  it("multi-turn: confirms when user explicitly says '12am' (midnight is intentional)", () => {
+    // Existing: name + dateTime at midnight. User explicitly says "12am" as time-only revision.
+    // Should confirm since time was explicitly set this turn, even though it's midnight.
+    const existingDate = new Date(2026, 3, 5); // April 5, midnight
+    const result = resolveDeterministicPartyInfoTurn({
+      text: "12am",
+      currentData: {
+        partyInfo: {
+          name: "Easter Brunch",
+          dateTime: existingDate,
+          location: undefined,
+          description: undefined,
+          allowContributions: false,
+        },
+      },
+      referenceNow: new Date("2026-03-07T04:10:00.000Z"),
+    });
+
+    expect(result.handled).toBe(true);
+    if (!result.handled) return;
+
+    expect(result.intent).toBe("confirm-party-info");
+    expect(result.actions).toHaveLength(2);
+    const resolvedDateTime = result.actions[0].type === "update-party-info"
+      ? result.actions[0].payload.resolvedDateTime
+      : undefined;
+    expect(resolvedDateTime).toBeInstanceOf(Date);
+    expect(resolvedDateTime!.getHours()).toBe(0); // midnight
+  });
+
   it("handles time-only revision 'change the time to 7:30pm'", () => {
     const existingDate = new Date("2026-02-22T13:00:00.000Z");
     const result = resolveDeterministicPartyInfoTurn({
