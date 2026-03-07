@@ -202,14 +202,16 @@ export function parsePartyDateTimeInput(input: string, now: Date = new Date()): 
   const lowered = trimmed.toLowerCase();
   const parsedTime = parseTime(lowered);
 
-  const relativeDate = parseRelativeDate(lowered, now, parsedTime);
-  if (relativeDate) {
-    return relativeDate;
-  }
-
+  // Try month-day BEFORE relative weekday — "April 5th" is more specific than "Sunday".
+  // This ensures "Sunday, April 5th at 1pm" resolves to April 5, not the next Sunday.
   const monthDayDate = parseMonthDayDate(lowered, now, parsedTime);
   if (monthDayDate) {
     return monthDayDate;
+  }
+
+  const relativeDate = parseRelativeDate(lowered, now, parsedTime);
+  if (relativeDate) {
+    return relativeDate;
   }
 
   return null;

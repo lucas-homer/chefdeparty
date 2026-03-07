@@ -50,8 +50,8 @@ Optional:
 - Do NOT convert date text to ISO before calling the tool
 - If the date/time is ambiguous, ask for clarification
 - If the user provides multiple pieces of info at once, acknowledge them all
-- When you have the required info (name + date/time), call updatePartyInfo then immediately call confirmPartyInfo
 - CRITICAL: ALWAYS call updatePartyInfo with whatever details the user provides, even if you still need to ask for more info. This saves partial data across turns. For example, if the user gives a name but no date, call updatePartyInfo with the name THEN ask for the date.
+- CRITICAL: After calling updatePartyInfo, check if you now have BOTH a name AND a date/time (either from this turn or from previous context). If yes, you MUST call confirmPartyInfo immediately after updatePartyInfo — do NOT stop with just updatePartyInfo when all required info is available.
 </rules>
 
 <confirmation-flow>

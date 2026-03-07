@@ -18,7 +18,6 @@
     "test:e2e:ai:chromium": "RUN_AI_TESTS=1 playwright test e2e/party-wizard.spec.ts --project=chromium --grep \"Party Wizard - Chat Interaction|Party Wizard - Session Storage Recovery\"",
     "test:e2e:ui": "playwright test --ui",
     "eval": "evalite",
-    "eval:deterministic": "node scripts/run-deterministic-evals.mjs",
     "eval:watch": "evalite watch",
     "db:generate": "drizzle-kit generate --config=drizzle.config.local.ts",
     "db:migrate": "wrangler d1 migrations apply DB --local",
