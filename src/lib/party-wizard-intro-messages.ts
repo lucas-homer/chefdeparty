@@ -5,7 +5,7 @@ const introText: Record<WizardStep, string> = {
   "party-info":
     "Let's plan your party! Tell me about your event - what's the occasion, when is it, and where?",
   guests:
-    "Who's coming? Add your guests with their email or phone. You can always add more later.",
+    "Who's coming? Add your guests by name and/or email. You can always add more later.",
   menu:
     "What's on the menu? Pick recipes from your library, paste a URL, upload an image, or describe a dish.",
   timeline:

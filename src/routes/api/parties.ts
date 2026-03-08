@@ -584,12 +584,9 @@ const partiesRoutes = new Hono<AppContext>()
         .where(and(eq(partyMenu.id, menuItemId), eq(partyMenu.partyId, partyId)));
 
       if (menuItem) {
-        // Delete menu item first
+        // Delete menu item and associated timeline tasks (keep the recipe)
         await db.delete(partyMenu).where(eq(partyMenu.id, menuItemId));
-        // Delete timeline tasks that reference this recipe
         await db.delete(timelineTasks).where(eq(timelineTasks.recipeId, menuItem.recipeId));
-        // Now safe to delete the recipe copy
-        await db.delete(recipes).where(eq(recipes.id, menuItem.recipeId));
       }
 
       return c.redirect(`/parties/${partyId}/menu`);
@@ -621,14 +618,9 @@ const partiesRoutes = new Hono<AppContext>()
       return c.json({ error: "Menu item not found" }, 404);
     }
 
-    // Delete the menu item
+    // Delete menu item and associated timeline tasks (keep the recipe)
     await db.delete(partyMenu).where(eq(partyMenu.id, menuItemId));
-
-    // Delete timeline tasks that reference this recipe
     await db.delete(timelineTasks).where(eq(timelineTasks.recipeId, menuItem.recipeId));
-
-    // Delete the copied recipe
-    await db.delete(recipes).where(eq(recipes.id, menuItem.recipeId));
 
     return c.json({ success: true });
   })

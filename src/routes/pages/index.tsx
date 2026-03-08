@@ -722,7 +722,7 @@ pageRoutes.get("/parties/:id/menu", requireAuth, async (c) => {
     .where(eq(recipes.ownerId, user.id));
 
   return c.render(
-    <Layout title={`Menu - ${party.name}`} user={user}>
+    <Layout title={`Menu - ${party.name}`} user={user} scripts={["/assets/menu-remove.js"]}>
       <div className="mb-6">
         <a href={`/parties/${partyId}`} className="text-sm text-muted-foreground hover:text-foreground">
           &larr; Back to {party.name}
@@ -763,22 +763,23 @@ pageRoutes.get("/parties/:id/menu", requireAuth, async (c) => {
       ) : (
         <div className="border rounded-lg divide-y">
           {menuItems.map((item) => (
-            <div key={item.id} className="p-4 flex items-center justify-between">
-              <div>
-                <p className="font-medium">{item.recipeName}</p>
+            <div key={item.id} className="p-4 flex items-start justify-between hover:bg-muted/50 transition-colors">
+              <a href={`/recipes/${item.recipeId}?partyId=${partyId}`} className="flex-1 min-w-0">
+                <span className="font-medium">{item.recipeName}</span>
                 {item.recipeDescription && (
                   <p className="text-sm text-muted-foreground">{item.recipeDescription}</p>
                 )}
                 {item.scaledServings && (
                   <p className="text-xs text-muted-foreground">Serves {item.scaledServings}</p>
                 )}
-              </div>
-              <form action={`/api/parties/${partyId}/menu/${item.id}`} method="POST">
-                <input type="hidden" name="_method" value="DELETE" />
-                <button type="submit" className="text-sm text-red-600 hover:underline">
-                  Remove
-                </button>
-              </form>
+              </a>
+              <div
+                data-menu-remove
+                data-party-id={partyId}
+                data-menu-item-id={item.id}
+                data-recipe-name={item.recipeName}
+                className="relative z-10"
+              />
             </div>
           ))}
         </div>
@@ -1145,11 +1146,24 @@ pageRoutes.get("/recipes/:id", requireAuth, async (c) => {
     return c.notFound();
   }
 
+  const partyId = c.req.query("partyId");
+  let partyName: string | null = null;
+  if (partyId) {
+    const [party] = await db
+      .select({ name: parties.name })
+      .from(parties)
+      .where(and(eq(parties.id, partyId), eq(parties.hostId, user.id)));
+    partyName = party?.name ?? null;
+  }
+
   return c.render(
     <Layout title={`${recipe.name} - ChefDeParty`} user={user}>
       <div className="mb-6">
-        <a href="/recipes" className="text-sm text-muted-foreground hover:text-foreground">
-          &larr; Back to recipes
+        <a
+          href={partyName ? `/parties/${partyId}/menu` : "/recipes"}
+          className="text-sm text-muted-foreground hover:text-foreground"
+        >
+          &larr; {partyName ? `Back to ${partyName} menu` : "Back to recipes"}
         </a>
       </div>
 

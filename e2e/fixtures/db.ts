@@ -9,6 +9,7 @@ import {
   testParties,
   testGuests,
   testRecipes,
+  testMenuItems,
   testContributionItems,
   testTimelineTasks,
   testSessions,
@@ -188,6 +189,22 @@ export async function seedDatabase(): Promise<void> {
   }
   console.log(`Seeded ${testRecipes.length} recipes`);
 
+  // Insert menu items
+  for (const item of testMenuItems) {
+    execSql(`
+      INSERT INTO party_menu (id, party_id, recipe_id, scaled_servings, course, created_at)
+      VALUES (
+        '${item.id}',
+        '${item.partyId}',
+        '${item.recipeId}',
+        ${item.scaledServings ?? "NULL"},
+        ${item.course ? `'${item.course}'` : "NULL"},
+        ${Math.floor(item.createdAt.getTime() / 1000)}
+      )
+    `);
+  }
+  console.log(`Seeded ${testMenuItems.length} menu items`);
+
   // Insert timeline tasks
   for (const task of testTimelineTasks) {
     execSql(`
@@ -237,6 +254,7 @@ export {
   testParties,
   testGuests,
   testRecipes,
+  testMenuItems,
   testContributionItems,
   testTimelineTasks,
   testSessions,
