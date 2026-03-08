@@ -152,6 +152,18 @@ export const testRecipes = [
   },
 ];
 
+// Test menu items (recipes on a party menu)
+export const testMenuItems = [
+  {
+    id: "test-menu-item-1",
+    partyId: testParties.upcoming.id,
+    recipeId: testRecipes[0].id,
+    scaledServings: 8,
+    course: "main" as const,
+    createdAt: new Date(),
+  },
+];
+
 // Test contribution items
 export const testContributionItems = [
   {

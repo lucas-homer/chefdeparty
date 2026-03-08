@@ -22,6 +22,8 @@ export default defineConfig({
         "import-recipe": path.resolve(__dirname, "client/import-recipe.tsx"),
         "recipe-chat": path.resolve(__dirname, "client/recipe-chat.tsx"),
         "party-wizard": path.resolve(__dirname, "client/party-wizard/index.tsx"),
+        // Menu item remove button with confirmation dialog
+        "menu-remove": path.resolve(__dirname, "client/menu-remove.tsx"),
         // User menu drawer (loaded on all authenticated pages)
         "user-menu": path.resolve(__dirname, "client/user-menu.tsx"),
         // Admin components
