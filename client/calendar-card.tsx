@@ -29,8 +29,8 @@ function CalendarCard({ connected: initialConnected, calendarEmail }: CalendarCa
       const response = await client.calendar.disconnect.$post();
 
       if (!response.ok) {
-        const err = await response.json();
-        throw new Error("error" in err ? err.error : "Failed to disconnect");
+        const err = await response.json() as { error?: string };
+        throw new Error(err.error || "Failed to disconnect");
       }
 
       setConnected(false);

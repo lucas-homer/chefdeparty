@@ -58,7 +58,7 @@ export async function sendOtp(
       }),
     });
 
-    const data = await response.json() as any;
+    const data = await response.json() as { sid?: string; message?: string };
 
     if (!response.ok) {
       console.error("Twilio Verify error:", data);
@@ -110,7 +110,7 @@ export async function verifyOtp(
       }),
     });
 
-    const data = await response.json() as any;
+    const data = await response.json() as { status?: string; code?: number; message?: string };
 
     if (!response.ok) {
       console.error("Twilio Verify Check error:", data);
@@ -177,7 +177,7 @@ export async function sendSms(
       }),
     });
 
-    const data = await response.json() as any;
+    const data = await response.json() as { sid?: string; code?: number; message?: string };
 
     if (!response.ok) {
       console.error("Twilio Messages error:", data);

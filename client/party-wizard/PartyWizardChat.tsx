@@ -215,7 +215,7 @@ function PartyWizardChatInner({
   const { messages, status, sendMessage, error: chatError, setMessages } =
     useChat({
       id: chatId,
-      initialMessages: initialMessages,
+      messages: initialMessages,
       transport,
       generateId: () => crypto.randomUUID(),
       onFinish: ({ message }) => {
@@ -420,7 +420,7 @@ function PartyWizardChatInner({
         throw new Error(message);
       }
 
-      const data = await response.json();
+      const data = (await response.json()) as { partyUrl: string };
 
       if (onComplete) {
         onComplete(data.partyUrl);
@@ -526,19 +526,14 @@ function PartyWizardChatInner({
     const userText = input.trim() || "Please extract the recipe from these images and add it to the menu.";
     const fingerprints = stagedImages.map((img) => img.fingerprint).join(",");
 
-    const parts = [
-      ...stagedImages.map((img) => ({
-        type: "image" as const,
-        image: img.dataUrl,
+    sendMessage({
+      text: `${userText}\n[image-fingerprints:${fingerprints}]`,
+      files: stagedImages.map((img) => ({
+        type: "file" as const,
+        mediaType: img.dataUrl.split(";")[0].replace("data:", "") || "image/jpeg",
+        url: img.dataUrl,
       })),
-      {
-        type: "text" as const,
-        text: `${userText}\n[image-fingerprints:${fingerprints}]`,
-      },
-    ];
-
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- AI SDK types don't expose image part in UIMessagePart union
-    sendMessage({ parts: parts as any });
+    });
     setStagedImages([]);
     setInput("");
   }
@@ -557,7 +552,7 @@ function PartyWizardChatInner({
       });
 
       if (!response.ok) {
-        const data = await response.json();
+        const data = (await response.json()) as { error?: string };
         throw new Error(data.error || "Failed to remove item");
       }
 
@@ -582,7 +577,7 @@ function PartyWizardChatInner({
       });
 
       if (!response.ok) {
-        const data = await response.json();
+        const data = (await response.json()) as { error?: string };
         throw new Error(data.error || "Failed to remove guest");
       }
 
@@ -960,7 +955,7 @@ function PartyWizardChatInner({
         <div key={index} className="space-y-3">
           <p className="whitespace-pre-wrap">{data.message}</p>
           <TimelinePreview
-            timeline={data.timeline}
+            timeline={data.timeline.map((t) => ({ ...t, isPhaseStart: t.isPhaseStart ?? false }))}
             onSubmit={handleTimelineSubmit}
             isSubmitting={isLoading}
           />

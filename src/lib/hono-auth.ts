@@ -255,26 +255,28 @@ export function createAuthRoutes() {
 export const authMiddleware = verifyAuth();
 
 // Helper to get session from context
-export async function getSession(c: Context<{ Bindings: Env }>) {
-  const auth = c.get("authUser");
-  return auth?.session || null;
+export async function getSession<E extends Record<string, unknown>>(c: Context<E>) {
+  const auth = c.get("authUser" as never);
+  return (auth as { session?: unknown })?.session || null;
 }
 
 // Helper to get user from context
-export function getUser(c: Context<{ Bindings: Env }>): AuthUser | null {
-  const auth = c.get("authUser");
+export function getUser<E extends Record<string, unknown>>(c: Context<E>): AuthUser | null {
+  const auth = c.get("authUser" as never) as {
+    session?: { user?: { id: string; email?: string; name?: string; image?: string } };
+  } | null;
   if (!auth?.session?.user) return null;
   return {
     id: auth.session.user.id,
-    email: sanitizeAuthEmail(auth.session.user.email),
+    email: sanitizeAuthEmail(auth.session.user.email) ?? null,
     name: auth.session.user.name || null,
     image: auth.session.user.image || null,
   };
 }
 
 // Middleware to require authentication
-export async function requireAuth(
-  c: Context<{ Bindings: Env }>,
+export async function requireAuth<E extends Record<string, unknown>>(
+  c: Context<E>,
   next: () => Promise<void>
 ) {
   const user = getUser(c);
@@ -290,20 +292,3 @@ export async function requireAuth(
   await next();
 }
 
-// Type augmentation for Hono context
-declare module "hono" {
-  interface ContextVariableMap {
-    authUser: {
-      session: {
-        user: {
-          id: string;
-          email?: string;
-          name?: string;
-          image?: string;
-        };
-        expires: string;
-      } | null;
-      token: string | null;
-    };
-  }
-}

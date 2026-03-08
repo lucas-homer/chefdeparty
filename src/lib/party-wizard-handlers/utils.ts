@@ -122,12 +122,12 @@ export function stripLargeDataForStorage(parts: Array<Record<string, unknown>>):
           : "image/unknown",
       };
     }
-    // Handle file parts similarly
-    if (part.type === "file" && part.data) {
+    // Handle file parts (url contains base64 data URL from AI SDK FileUIPart)
+    if (part.type === "file" && (part.data || part.url)) {
       return {
         type: "file",
         fileStripped: true,
-        mimeType: (part.mimeType as string) || "application/octet-stream",
+        mediaType: (part.mediaType as string) || (part.mimeType as string) || "application/octet-stream",
         name: part.name,
       };
     }

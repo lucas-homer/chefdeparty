@@ -491,11 +491,11 @@ Your previous attempt returned no visible response. Provide a concise user-visib
         // extra round trip of waiting for the model to chain confirmPartyInfo.
         let autoConfirmed = false;
         if (!fallbackMessage) {
-          const calledUpdate = finalAttempt.toolCalls.some(
-            (tc: { toolName: string }) => tc.toolName === "updatePartyInfo"
+          const calledUpdate = (finalAttempt.toolCalls as Array<{ toolName: string }>).some(
+            (tc) => tc.toolName === "updatePartyInfo"
           );
-          const calledConfirm = finalAttempt.toolCalls.some(
-            (tc: { toolName: string }) => tc.toolName === confirmationToolName
+          const calledConfirm = (finalAttempt.toolCalls as Array<{ toolName: string }>).some(
+            (tc) => tc.toolName === confirmationToolName
           );
 
           // Don't auto-confirm if the time is midnight (likely defaulted, not intentional)

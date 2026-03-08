@@ -1,3 +1,5 @@
+export {};
+
 function setMessage(type: "error" | "success" | "info", message: string) {
   const messageDiv = document.getElementById("message");
   if (!messageDiv) return;
@@ -372,8 +374,8 @@ function init() {
   const callbackUrl = root.dataset.callbackUrl || "/parties";
 
   fetch("/api/auth/csrf")
-    .then((response) => response.json())
-    .then((data: { csrfToken: string }) => {
+    .then((response) => response.json() as Promise<{ csrfToken: string }>)
+    .then((data) => {
       const emailToken = document.getElementById("csrf-token-email") as HTMLInputElement | null;
       const googleToken = document.getElementById("csrf-token-google") as HTMLInputElement | null;
       const googleRegisterToken = document.getElementById("csrf-token-google-register") as HTMLInputElement | null;

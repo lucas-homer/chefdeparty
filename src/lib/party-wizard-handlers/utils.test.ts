@@ -40,6 +40,26 @@ describe("party-wizard handler utils", () => {
         },
       ]);
     });
+
+    it.each([
+      { mediaType: "image/jpeg", url: "data:image/jpeg;base64,abc" },
+      { mediaType: "image/heic", url: "data:image/heic;base64,abc" },
+      { mediaType: "image/png", url: "data:image/png;base64,abc" },
+      { mediaType: "image/webp", url: "data:image/webp;base64,abc" },
+    ])("replaces file parts ($mediaType) with fileStripped placeholders", ({ mediaType, url }) => {
+      const parts = stripLargeDataForStorage([
+        { type: "file", mediaType, url },
+      ]);
+
+      expect(parts).toEqual([
+        {
+          type: "file",
+          fileStripped: true,
+          mediaType,
+          name: undefined,
+        },
+      ]);
+    });
   });
 
   describe("filterMessagesForAI", () => {

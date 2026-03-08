@@ -550,7 +550,7 @@ const partiesRoutes = new Hono<AppContext>()
       .values({
         partyId,
         recipeId: recipeCopy.id,
-        course: course || null,
+        course: (course || null) as "appetizer" | "main" | "side" | "dessert" | "drink" | null,
         scaledServings: scaledServings || originalRecipe.servings,
       })
       .returning();

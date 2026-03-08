@@ -14,6 +14,7 @@
     "jsx": "react-jsx",
     "jsxImportSource": "react",
     "incremental": true,
+    "baseUrl": ".",
     "paths": {
       "@/*": ["./src/*"]
     },
@@ -30,12 +31,8 @@
     "dist",
     "evals",
     "e2e",
-    ".next",
-    "src/app",
     "src/components/ui",
-    "src/components/providers.tsx",
-    "src/components/user-nav.tsx",
-    "src/components/recipe",
-    "src/lib/auth.ts"
+    "src/**/*.test.ts",
+    "src/**/*.test.tsx"
   ]
 }

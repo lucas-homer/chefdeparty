@@ -185,7 +185,7 @@ async function init() {
   let csrfToken = "";
   try {
     const response = await fetch("/api/auth/csrf");
-    const data = await response.json();
+    const data = (await response.json()) as { csrfToken?: string };
     csrfToken = data.csrfToken || "";
   } catch (err) {
     console.error("Failed to fetch CSRF token:", err);

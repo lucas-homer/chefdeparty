@@ -19,7 +19,7 @@ export function RecipePicker({ onSelectRecipe, selectedRecipeIds = [] }: RecipeP
       try {
         const response = await fetch("/api/recipes");
         if (response.ok) {
-          const data = await response.json();
+          const data = (await response.json()) as UserRecipe[];
           setRecipes(data);
         }
       } catch (error) {

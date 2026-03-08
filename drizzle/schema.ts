@@ -1,4 +1,4 @@
-import { sqliteTable, text, integer } from "drizzle-orm/sqlite-core";
+import { sqliteTable, text, integer, type AnySQLiteColumn } from "drizzle-orm/sqlite-core";
 
 // Users (hosts and optionally guests)
 export const users = sqliteTable("users", {
@@ -109,7 +109,7 @@ export const recipes = sqliteTable("recipes", {
     enum: ["url", "photo", "ai", "manual"],
   }),
   // For copy-on-add: reference to original recipe if this is a copy
-  copiedFromId: text("copied_from_id").references(() => recipes.id, {
+  copiedFromId: text("copied_from_id").references((): AnySQLiteColumn => recipes.id, {
     onDelete: "set null",
   }),
   // For public sharing

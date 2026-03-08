@@ -1,4 +1,4 @@
-import { Hono } from "hono";
+import { Hono, type Context } from "hono";
 import { zValidator } from "@hono/zod-validator";
 import { z } from "zod";
 import { eq, and } from "drizzle-orm";
@@ -102,9 +102,10 @@ const completeValidationMiddleware = zValidator(
   async (result, c) => {
     if (result.success) return;
 
-    const user = getUser(c);
+    const env = c.env as unknown as Env;
+    const user = getUser(c as Context<{ Bindings: Env }>);
     const sessionId = getSessionIdFromUnknown(result.data);
-    const validationTrace = createLangfuseTrace(c.env, {
+    const validationTrace = createLangfuseTrace(env, {
       name: "party-wizard.complete",
       sessionId,
       userId: user?.id,
@@ -125,7 +126,7 @@ const completeValidationMiddleware = zValidator(
         details: result.error.errors,
       },
     });
-    await flushLangfuse(c.env);
+    await flushLangfuse(env);
 
     return c.json(
       {
@@ -429,7 +430,9 @@ const partyWizardRoutes = new Hono<AppContext>()
     });
 
     // Check for image in message
-    const hasImage = incomingMessage.parts?.some((p: { type: string }) => p.type === "image");
+    const hasImage = incomingMessage.parts?.some(
+      (p: { type: string; mediaType?: string }) => p.type === "file" && typeof p.mediaType === "string" && p.mediaType.startsWith("image/")
+    );
 
     // Find pending confirmation request
     const pendingConfirmationRequest = findPendingConfirmationRequest(existingMessages);
