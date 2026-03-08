@@ -35,7 +35,7 @@ export function useWizardState(): UseWizardStateResult {
       if (!response.ok) {
         throw new Error("Failed to load session");
       }
-      const data = await response.json();
+      const data = (await response.json()) as { session: WizardSession; messages?: UIMessage[] };
       setSession(data.session);
       setMessages(data.messages || []);
     } catch (err) {
@@ -59,7 +59,7 @@ export function useWizardState(): UseWizardStateResult {
       if (!response.ok) {
         throw new Error("Failed to change step");
       }
-      const data = await response.json();
+      const data = (await response.json()) as { session: WizardSession; messages?: UIMessage[] };
       setSession(data.session);
       setMessages(data.messages || []);
     } catch (err) {
@@ -79,7 +79,7 @@ export function useWizardState(): UseWizardStateResult {
       if (!response.ok) {
         throw new Error("Failed to start new session");
       }
-      const data = await response.json();
+      const data = (await response.json()) as { session: WizardSession; messages?: UIMessage[] };
       setSession(data.session);
       setMessages(data.messages || []);
     } catch (err) {
@@ -98,7 +98,7 @@ export function useWizardState(): UseWizardStateResult {
       if (!response.ok) {
         throw new Error("Failed to refresh session");
       }
-      const data = await response.json();
+      const data = (await response.json()) as { session: WizardSession };
       setSession(data.session);
     } catch (err) {
       console.error("Failed to refresh session:", err);
@@ -118,7 +118,7 @@ export function useWizardState(): UseWizardStateResult {
       if (!response.ok) {
         throw new Error("Failed to refresh messages");
       }
-      const data = await response.json();
+      const data = (await response.json()) as { session: WizardSession; messages?: UIMessage[] };
       setSession(data.session);
       setMessages(data.messages || []);
     } catch (err) {

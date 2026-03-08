@@ -170,10 +170,10 @@ function ImportFromImageDialog() {
       });
 
       if (res.ok) {
-        const recipe = await res.json();
+        const recipe = (await res.json()) as { id: string };
         window.location.href = `/recipes/${recipe.id}`;
       } else {
-        const data = await res.json();
+        const data = (await res.json()) as { error?: string };
         setError(data.error || "Failed to import recipe from image");
       }
     } catch (err) {

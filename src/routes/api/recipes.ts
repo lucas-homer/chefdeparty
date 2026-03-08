@@ -1,7 +1,7 @@
 import { Hono } from "hono";
 import { zValidator } from "@hono/zod-validator";
 import { eq, desc, isNull, and } from "drizzle-orm";
-import { recipes } from "../../../drizzle/schema";
+import { recipes, type DietaryTag } from "../../../drizzle/schema";
 import { requireAuth, getUser } from "../../lib/hono-auth";
 import { createRecipeSchema, updateRecipeSchema, importUrlSchema, aiRecipeExtractionSchema } from "../../lib/schemas";
 import type { Env } from "../../index";
@@ -254,7 +254,7 @@ const recipesRoutes = new Hono<AppContext>()
         cookTimeMinutes: recipe.cookTimeMinutes || null,
         servings: recipe.servings || null,
         tags: recipe.tags || [],
-        dietaryTags: recipe.dietaryTags || [],
+        dietaryTags: (recipe.dietaryTags || []) as DietaryTag[],
       })
       .returning();
 
@@ -321,7 +321,7 @@ const recipesRoutes = new Hono<AppContext>()
         cookTimeMinutes: recipe.cookTimeMinutes || null,
         servings: recipe.servings || null,
         tags: recipe.tags || [],
-        dietaryTags: recipe.dietaryTags || [],
+        dietaryTags: (recipe.dietaryTags || []) as DietaryTag[],
       })
       .returning();
 
@@ -351,7 +351,7 @@ Be conversational and helpful.`,
       tools: {
         saveRecipe: tool({
           description: "Save the generated recipe to the user's recipe collection",
-          parameters: aiRecipeExtractionSchema,
+          inputSchema: aiRecipeExtractionSchema,
           execute: async (recipe) => {
             const shareToken = crypto.randomUUID().slice(0, 8);
             const [newRecipe] = await db

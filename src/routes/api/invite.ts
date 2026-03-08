@@ -97,7 +97,7 @@ const inviteRoutes = new Hono<AppContext>()
     let name: string;
     let email: string | undefined;
     let phone: string | undefined;
-    let rsvpStatus: string;
+    let rsvpStatus: "pending" | "yes" | "no" | "maybe";
     let headcount: number | undefined;
     let dietaryRestrictions: string | undefined;
     let claimContributionIds: string[] | undefined;
@@ -116,7 +116,7 @@ const inviteRoutes = new Hono<AppContext>()
       name = formData.name as string;
       email = formData.email as string | undefined;
       phone = formData.phone as string | undefined;
-      rsvpStatus = formData.rsvpStatus as string;
+      rsvpStatus = formData.rsvpStatus as "pending" | "yes" | "no" | "maybe";
       headcount = formData.headcount ? parseInt(formData.headcount as string, 10) : undefined;
       dietaryRestrictions = formData.dietaryRestrictions as string | undefined;
       const claims = formData.claimContributionIds;
@@ -250,7 +250,7 @@ const inviteRoutes = new Hono<AppContext>()
     let name: string;
     let email: string | undefined;
     let phone: string | undefined;
-    let rsvpStatus: string;
+    let rsvpStatus: "pending" | "yes" | "no" | "maybe";
     let headcount: number | undefined;
     let dietaryRestrictions: string | undefined;
     let claimContributionIds: string[] | undefined;
@@ -269,7 +269,7 @@ const inviteRoutes = new Hono<AppContext>()
       name = formData.name as string;
       email = formData.email as string | undefined;
       phone = formData.phone as string | undefined;
-      rsvpStatus = formData.rsvpStatus as string;
+      rsvpStatus = formData.rsvpStatus as "pending" | "yes" | "no" | "maybe";
       headcount = formData.headcount ? parseInt(formData.headcount as string, 10) : undefined;
       dietaryRestrictions = formData.dietaryRestrictions as string | undefined;
       // Handle checkbox array for contribution claims

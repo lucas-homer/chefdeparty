@@ -75,36 +75,33 @@ function RecipeChat() {
                   .join("")}
               </div>
 
-              {/* Tool Results - v6 format uses parts array */}
+              {/* Tool Results - tool parts have type "tool-<name>" or "dynamic-tool" with state/output */}
               {msg.parts
-                .filter((p): p is { type: "tool-invocation"; toolInvocation: { state: string; toolCallId: string; result?: unknown } } =>
-                  p.type === "tool-invocation"
+                .filter((p): p is typeof p & { toolCallId: string; state: string; output: unknown } =>
+                  p.type.startsWith("tool-") && "state" in p && (p as { state: string }).state === "output-available"
                 )
                 .map((part) => {
-                  const inv = part.toolInvocation;
-                  if (inv.state === "result") {
-                    const result = inv.result as ToolResult;
-                    if (result.success) {
-                      return (
-                        <div
-                          key={inv.toolCallId}
-                          className="mt-3 p-3 bg-green-100 dark:bg-green-900/30 rounded-md"
+                  const result = part.output as ToolResult;
+                  if (result.success) {
+                    return (
+                      <div
+                        key={part.toolCallId}
+                        className="mt-3 p-3 bg-green-100 dark:bg-green-900/30 rounded-md"
+                      >
+                        <p className="text-sm font-medium text-green-800 dark:text-green-200 mb-2">
+                          Recipe saved!
+                        </p>
+                        <a
+                          href={`/recipes/${result.recipeId}`}
+                          className="inline-flex items-center gap-2 text-sm font-medium text-primary hover:underline"
                         >
-                          <p className="text-sm font-medium text-green-800 dark:text-green-200 mb-2">
-                            Recipe saved!
-                          </p>
-                          <a
-                            href={`/recipes/${result.recipeId}`}
-                            className="inline-flex items-center gap-2 text-sm font-medium text-primary hover:underline"
-                          >
-                            View "{result.title}"
-                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M14 5l7 7m0 0l-7 7m7-7H3" />
-                            </svg>
-                          </a>
-                        </div>
-                      );
-                    }
+                          View "{result.title}"
+                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M14 5l7 7m0 0l-7 7m7-7H3" />
+                          </svg>
+                        </a>
+                      </div>
+                    );
                   }
                   return null;
                 })}

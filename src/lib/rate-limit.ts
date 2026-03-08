@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import type { DrizzleD1Database } from "drizzle-orm/d1";
+import type { Database } from "./db";
 
 // Rate limit configuration
 export interface RateLimitConfig {
@@ -36,7 +36,7 @@ export interface RateLimitResult {
  * Uses a simple sliding window counter approach
  */
 export async function checkRateLimit(
-  db: DrizzleD1Database,
+  db: Database,
   key: string,
   keyType: "phone" | "ip",
   config: RateLimitConfig
@@ -123,7 +123,7 @@ export async function checkRateLimit(
  * Reset rate limit for a key (e.g., after successful verification)
  */
 export async function resetRateLimit(
-  db: DrizzleD1Database,
+  db: Database,
   key: string,
   keyType: "phone" | "ip"
 ): Promise<void> {
@@ -138,7 +138,7 @@ export async function resetRateLimit(
  * Check if a key is currently locked
  */
 export async function isLocked(
-  db: DrizzleD1Database,
+  db: Database,
   key: string,
   keyType: "phone" | "ip"
 ): Promise<boolean> {
@@ -184,7 +184,7 @@ export function getClientIp(request: Request): string {
  * Checks both phone-based and IP-based limits
  */
 export async function checkOtpRateLimit(
-  db: DrizzleD1Database,
+  db: Database,
   phone: string,
   ip: string
 ): Promise<{

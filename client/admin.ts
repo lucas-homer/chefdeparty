@@ -1,4 +1,5 @@
 // Admin page functionality for invite code management
+export {};
 
 function showMessage(type: "success" | "error", message: string) {
   const messageDiv = document.getElementById("admin-message");
@@ -38,7 +39,7 @@ async function generateCode(formData: FormData) {
       body: JSON.stringify(body),
     });
 
-    const data = await response.json();
+    const data = (await response.json()) as { code?: string; error?: string };
 
     if (response.ok) {
       showMessage("success", `Code generated: ${data.code}`);
@@ -66,7 +67,7 @@ async function deleteCode(codeId: string) {
       showMessage("success", "Code deleted");
       setTimeout(() => window.location.reload(), 1000);
     } else {
-      const data = await response.json();
+      const data = (await response.json()) as { error?: string };
       showMessage("error", data.error || "Failed to delete code");
     }
   } catch (_err) {

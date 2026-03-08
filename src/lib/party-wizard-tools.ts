@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { tool, type ToolSet, type UIMessageStreamWriter } from "ai";
 import { eq, and } from "drizzle-orm";
-import { recipes, wizardSessions } from "../../drizzle/schema";
+import { recipes, wizardSessions, type DietaryTag } from "../../drizzle/schema";
 import type {
   WizardStep,
   WizardState,
@@ -609,6 +609,7 @@ Make the recipe practical and achievable for a home cook.`;
               ...menuPlan.newRecipes,
               {
                 ...recipe,
+                dietaryTags: recipe.dietaryTags as DietaryTag[] | undefined,
                 sourceType: "ai" as const,
                 course: data.course,
               },

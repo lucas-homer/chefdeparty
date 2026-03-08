@@ -9,7 +9,7 @@
  */
 
 import { eq, and } from "drizzle-orm";
-import { wizardSessions, type SerializedUIMessage } from "../../../drizzle/schema";
+import { wizardSessions, type SerializedUIMessage, type DietaryTag } from "../../../drizzle/schema";
 import { serializeMenuPlan } from "../wizard-session-serialization";
 import { getWizardTools } from "../party-wizard-tools";
 import { getStepSystemPrompt } from "../party-wizard-prompts";
@@ -313,8 +313,8 @@ Previous confirmation summary: "${pendingConfirmationRequest.summary}"`;
           }
 
           const imageParts = incomingMessage.parts.filter(
-            (p) => p.type === "image"
-          ) as Array<{ type: "image"; image: string }>;
+            (p) => p.type === "file" && typeof (p as any).mediaType === "string" && (p as any).mediaType.startsWith("image/")
+          ) as Array<{ type: "file"; mediaType: string; url: string }>;
 
           if (imageParts.length > 0) {
             // Use client-provided pixel fingerprints for dedup (handles HEIC transcoding non-determinism)
@@ -325,7 +325,7 @@ Previous confirmation summary: "${pendingConfirmationRequest.summary}"`;
             } else {
               // Fallback: hash raw image data (works when files aren't transcoded)
               imageHashes = await Promise.all(
-                imageParts.map((img) => hashImageData(img.image as string))
+                imageParts.map((img) => hashImageData(img.url))
               );
             }
 
@@ -377,7 +377,7 @@ Previous confirmation summary: "${pendingConfirmationRequest.summary}"`;
                   content: [
                     ...imageParts.map((img) => ({
                       type: "image" as const,
-                      image: img.image as string,
+                      image: img.url,
                     })),
                     {
                       type: "text" as const,
@@ -452,6 +452,7 @@ If the recipe name isn't clear, give it an appropriate name based on the dish.`,
                 ...menuPlan.newRecipes,
                 {
                   ...recipe,
+                  dietaryTags: recipe.dietaryTags as DietaryTag[] | undefined,
                   sourceType: "photo" as const,
                   imageHash: combinedHash,
                 },
@@ -675,6 +676,7 @@ What else would you like to add, or are you ready to finalize the menu?`;
                 ...menuPlan.newRecipes,
                 {
                   ...recipe,
+                  dietaryTags: recipe.dietaryTags as DietaryTag[] | undefined,
                   sourceUrl: url,
                   sourceType: "url" as const,
                 },

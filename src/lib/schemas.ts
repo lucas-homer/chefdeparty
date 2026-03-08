@@ -66,6 +66,7 @@ export const aiRecipeExtractionSchema = z.object({
   cookTimeMinutes: z.number().optional().describe("Cooking time in minutes"),
   servings: z.number().optional().describe("Number of servings"),
   tags: z.array(z.string()).optional().describe("Recipe tags like 'quick', 'comfort food'"),
+  dietaryTags: z.array(dietaryTagSchema).optional().describe("Dietary tags like 'vegetarian', 'gluten-free', 'contains-nuts'"),
 });
 
 export const updateRecipeSchema = createRecipeSchema.partial();

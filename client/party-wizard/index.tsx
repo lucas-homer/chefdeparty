@@ -14,7 +14,7 @@ export { MobileSidebarTrigger, DesktopSidebarAside } from "./WizardSidebarContai
 export { useWizardState } from "./useWizardState";
 
 // Types
-export type { WizardStep, WizardState, PartyInfoData, GuestData, MenuPlanData, TimelineTaskData } from "./types";
+export type { WizardStep, WizardSession, PartyInfoData, GuestData, MenuPlanData, TimelineTaskData } from "./types";
 
 interface PartyWizardAppProps {
   manualUrl?: string;
