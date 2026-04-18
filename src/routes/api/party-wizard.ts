@@ -40,13 +40,21 @@ import {
 } from "../../lib/party-wizard-handlers";
 import {
   createLangfuseTrace,
+  createLangfuseGeneration,
+  updateLangfuseGeneration,
+  endLangfuseGeneration,
   flushLangfuse,
   getLangfuseEnvironmentName,
   updateLangfuseTrace,
 } from "../../lib/langfuse";
 import { normalizeWizardCompletePayload } from "../../lib/wizard-complete-normalization";
 import { getStepIntroMessage } from "../../lib/party-wizard-intro-messages";
-import { flushLangfuseTelemetry } from "../../lib/otel";
+import { flushLangfuseTelemetry, getLangfuseTelemetryTracer } from "../../lib/otel";
+import {
+  createLangfuseAdapter,
+  createNoopAdapter,
+  type LangfuseAdapterDeps,
+} from "../../lib/telemetry-port";
 
 type Variables = {
   db: ReturnType<typeof createDb>;
@@ -474,6 +482,27 @@ const partyWizardRoutes = new Hono<AppContext>()
       tags: [`step:${step}`],
     });
 
+    // Create TelemetryPort for this request
+    const langfuseDeps: LangfuseAdapterDeps = {
+      createGeneration: createLangfuseGeneration as LangfuseAdapterDeps["createGeneration"],
+      updateGeneration: updateLangfuseGeneration as LangfuseAdapterDeps["updateGeneration"],
+      endGeneration: endLangfuseGeneration as LangfuseAdapterDeps["endGeneration"],
+      updateTrace: updateLangfuseTrace as LangfuseAdapterDeps["updateTrace"],
+      flush: flushLangfuse as LangfuseAdapterDeps["flush"],
+      flushTelemetry: flushLangfuseTelemetry,
+      getTracer: getLangfuseTelemetryTracer as LangfuseAdapterDeps["getTracer"],
+    };
+    const telemetryPort = langfuseTrace
+      ? createLangfuseAdapter(c.env, langfuseDeps, {
+          traceId: langfuseTrace.id,
+          sessionId,
+          userId: user.id,
+          step,
+          environment: getLangfuseEnvironmentName(c.env),
+          traceClient: langfuseTrace as { id: string; update: (p: Record<string, unknown>) => void },
+        })
+      : createNoopAdapter();
+
     const ctx: HandlerContext = {
       db,
       user: { id: user.id },
@@ -493,6 +522,7 @@ const partyWizardRoutes = new Hono<AppContext>()
       confirmationDecision,
       pendingConfirmationRequest,
       userRecipes,
+      telemetryPort,
       telemetry: langfuseTrace
         ? {
             traceId: langfuseTrace.id,

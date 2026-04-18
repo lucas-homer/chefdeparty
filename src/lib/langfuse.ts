@@ -1,7 +1,7 @@
 import { Langfuse } from "langfuse";
 import type { Env } from "../index";
 
-type LangfuseBindings = Pick<
+export type LangfuseBindings = Pick<
   Env,
   "LANGFUSE_PUBLIC_KEY" | "LANGFUSE_SECRET_KEY" | "LANGFUSE_BASE_URL" | "NODE_ENV" | "APP_URL"
 >;

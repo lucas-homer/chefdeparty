@@ -1,13 +1,12 @@
 import { z } from "zod";
 import { tool, type ToolSet, type UIMessageStreamWriter } from "ai";
-import { eq, and } from "drizzle-orm";
-import { recipes, wizardSessions, type DietaryTag } from "../../drizzle/schema";
+import { eq } from "drizzle-orm";
+import { recipes, type DietaryTag } from "../../drizzle/schema";
 import type {
   WizardStep,
   WizardState,
   TimelineTaskData,
   PartyInfoData,
-  GuestData,
   MenuPlanData,
 } from "./wizard-schemas";
 import {
@@ -20,12 +19,7 @@ import {
   extractRecipeFromUrlToolSchema,
   removeMenuItemToolSchema,
 } from "./wizard-schemas";
-import {
-  serializePartyInfo,
-  serializeGuestList,
-  serializeMenuPlan,
-  serializeTimeline,
-} from "./wizard-session-serialization";
+
 import { aiRecipeExtractionSchema } from "./schemas";
 import type { WizardMessage, StepConfirmationRequest } from "./wizard-message-types";
 import type { Env } from "../index";
@@ -36,12 +30,15 @@ import {
   confirmGuestListAction,
   removeGuestAction,
 } from "./party-wizard-actions/guests";
+import { updateSessionState as updateSessionStateShared } from "./party-wizard-actions/shared";
 import {
   createLangfuseGeneration,
   endLangfuseGeneration,
   updateLangfuseGeneration,
 } from "./langfuse";
 import { getLangfuseTelemetryTracer } from "./otel";
+import { tracedGenerateObject } from "./wizard-ai-runner";
+import { createNoopAdapter, type TelemetryPort } from "./telemetry-port";
 
 // Schema for timeline task generation (used by both tool and workflow)
 const TimelineTaskSchema = z.object({
@@ -213,49 +210,14 @@ function getToolTelemetrySettings(
   };
 }
 
-// Helper to update session state in the database
-// Converts runtime types to serialized DB types
-async function updateSessionState(
+// Delegate to the shared implementation in party-wizard-actions/shared.ts
+function updateSessionState(
   db: ReturnType<typeof createDb>,
   userId: string,
   sessionId: string | undefined,
-  updates: {
-    currentStep?: WizardStep;
-    partyInfo?: PartyInfoData | null;
-    guestList?: GuestData[];
-    menuPlan?: MenuPlanData | null;
-    timeline?: TimelineTaskData[] | null;
-  }
+  updates: Parameters<typeof updateSessionStateShared>[1]
 ): Promise<void> {
-  if (!sessionId) return;
-
-  // Serialize data for DB storage
-  const serializedUpdates: Record<string, unknown> = { updatedAt: new Date() };
-  if (updates.currentStep !== undefined) {
-    serializedUpdates.currentStep = updates.currentStep;
-  }
-  if (updates.partyInfo !== undefined) {
-    serializedUpdates.partyInfo = updates.partyInfo ? serializePartyInfo(updates.partyInfo) : null;
-  }
-  if (updates.guestList !== undefined) {
-    serializedUpdates.guestList = serializeGuestList(updates.guestList);
-  }
-  if (updates.menuPlan !== undefined) {
-    serializedUpdates.menuPlan = updates.menuPlan ? serializeMenuPlan(updates.menuPlan) : null;
-  }
-  if (updates.timeline !== undefined) {
-    serializedUpdates.timeline = updates.timeline ? serializeTimeline(updates.timeline) : null;
-  }
-
-  await db
-    .update(wizardSessions)
-    .set(serializedUpdates)
-    .where(
-      and(
-        eq(wizardSessions.id, sessionId),
-        eq(wizardSessions.userId, userId)
-      )
-    );
+  return updateSessionStateShared({ db, userId, sessionId, currentData: {} }, updates);
 }
 
 export function getWizardTools(step: WizardStep, context: ToolContext): ToolSet {
@@ -360,7 +322,9 @@ export function getWizardTools(step: WizardStep, context: ToolContext): ToolSet 
       };
     }
 
-    case "menu":
+    case "menu": {
+      // Create a TelemetryPort for tool-level traced AI calls
+      const toolTelemetryPort: TelemetryPort = createNoopAdapter();
       return {
         addExistingRecipe: tool({
           description:
@@ -423,7 +387,6 @@ export function getWizardTools(step: WizardStep, context: ToolContext): ToolSet 
               return { success: false, error: "This recipe URL has already been added to the menu." };
             }
 
-            const { generateObject } = await import("ai");
             const { createAI } = await import("./ai");
             const { defaultModel } = createAI(env.GOOGLE_GENERATIVE_AI_API_KEY);
 
@@ -453,45 +416,21 @@ export function getWizardTools(step: WizardStep, context: ToolContext): ToolSet 
 
             const extractionPrompt = `Extract the recipe from this webpage. Parse ingredients with amount/unit/name separated.\n\n${content}`;
 
-            const extractionGeneration = createLangfuseGeneration(env, {
-              traceId: context.telemetry?.traceId,
-              name: "wizard.menu.extractRecipeFromUrl",
-              model: "gemini-2.5-flash",
-              input: {
-                sourceUrl: data.url,
-                contentLength: content.length,
+            // Use tracedGenerateObject for extraction
+            const { object: recipe } = await tracedGenerateObject(
+              { telemetry: toolTelemetryPort, functionIdPrefix: "wizard.menu" },
+              {
+                generationName: "wizard.menu.extractRecipeFromUrl",
+                modelName: "gemini-2.5-flash",
+                model: defaultModel,
+                schema: aiRecipeExtractionSchema,
                 prompt: extractionPrompt,
-              },
-              metadata: {
-                sessionId: context.telemetry?.sessionId || sessionId,
-                step: context.telemetry?.step || step,
-              },
-            });
-
-            // Extract with AI
-            const { object: recipe } = await generateObject({
-              model: defaultModel,
-              schema: aiRecipeExtractionSchema,
-              prompt: extractionPrompt,
-              experimental_telemetry: getToolTelemetrySettings(
-                context,
-                "wizard.menu.extractRecipeFromUrl.generateObject",
-                {
+                metadata: {
                   sourceUrl: data.url,
                   contentLength: content.length,
-                }
-              ),
-            });
-
-            updateLangfuseGeneration(extractionGeneration, {
-              output: {
-                recipe,
-                recipeName: recipe.name,
-                ingredientCount: recipe.ingredients?.length ?? 0,
-                instructionCount: recipe.instructions?.length ?? 0,
-              },
-            });
-            endLangfuseGeneration(extractionGeneration);
+                },
+              }
+            );
 
             const menuPlan: MenuPlanData = currentData.menuPlan
               ? { ...currentData.menuPlan, existingRecipes: [...(currentData.menuPlan.existingRecipes || [])], newRecipes: [...(currentData.menuPlan.newRecipes || [])] }
@@ -549,7 +488,6 @@ export function getWizardTools(step: WizardStep, context: ToolContext): ToolSet 
             { input: { description: "easy chocolate mousse", course: "dessert" } },
           ] as const,
           execute: async (data) => {
-            const { generateObject } = await import("ai");
             const { createAI } = await import("./ai");
             const { defaultModel } = createAI(env.GOOGLE_GENERATIVE_AI_API_KEY);
 
@@ -564,43 +502,20 @@ Include:
 
 Make the recipe practical and achievable for a home cook.`;
 
-            const generation = createLangfuseGeneration(env, {
-              traceId: context.telemetry?.traceId,
-              name: "wizard.menu.generateRecipeIdea",
-              model: "gemini-2.5-flash",
-              input: {
-                description: data.description,
-                course: data.course,
+            // Use tracedGenerateObject for recipe generation
+            const { object: recipe } = await tracedGenerateObject(
+              { telemetry: toolTelemetryPort, functionIdPrefix: "wizard.menu" },
+              {
+                generationName: "wizard.menu.generateRecipeIdea",
+                modelName: "gemini-2.5-flash",
+                model: defaultModel,
+                schema: aiRecipeExtractionSchema,
                 prompt: recipeIdeaPrompt,
-              },
-              metadata: {
-                sessionId: context.telemetry?.sessionId || sessionId,
-                step: context.telemetry?.step || step,
-              },
-            });
-
-            const { object: recipe } = await generateObject({
-              model: defaultModel,
-              schema: aiRecipeExtractionSchema,
-              prompt: recipeIdeaPrompt,
-              experimental_telemetry: getToolTelemetrySettings(
-                context,
-                "wizard.menu.generateRecipeIdea.generateObject",
-                {
+                metadata: {
                   hasCourse: Boolean(data.course),
-                }
-              ),
-            });
-
-            updateLangfuseGeneration(generation, {
-              output: {
-                recipe,
-                recipeName: recipe.name,
-                ingredientCount: recipe.ingredients?.length ?? 0,
-                instructionCount: recipe.instructions?.length ?? 0,
-              },
-            });
-            endLangfuseGeneration(generation);
+                },
+              }
+            );
 
             const menuPlan: MenuPlanData = currentData.menuPlan
               ? { ...currentData.menuPlan, existingRecipes: [...(currentData.menuPlan.existingRecipes || [])], newRecipes: [...(currentData.menuPlan.newRecipes || [])] }
@@ -765,6 +680,7 @@ Make the recipe practical and achievable for a home cook.`;
           },
         }),
       };
+    }
 
     case "timeline":
       return {
