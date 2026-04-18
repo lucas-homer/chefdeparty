@@ -1,6 +1,20 @@
 # CLAUDE.md
 
+**Summary**: chefdeparty is a Cloudflare Workers + D1 + Hono app for AI-assisted dinner party planning. This file is the map for agents working in the repo.
+
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+
+## Knowledge layer
+
+Before starting non-trivial work, consult:
+
+- [`docs/architecture/overview.md`](docs/architecture/overview.md) — system shape and request lifecycle.
+- [`docs/decisions/`](docs/decisions/) — ADRs. Read the relevant one before changing something it touches.
+- [`docs/runbooks/`](docs/runbooks/) — deploy and migration playbooks.
+- [`docs/onboarding/week-one.md`](docs/onboarding/week-one.md) — full bootstrap if you're new to the repo.
+- [`AGENTS.md`](AGENTS.md) — authenticated UI iteration loop (use the seeded session, not real OAuth, by default).
+
+Ephemeral material (not canonical): `plans/` for in-flight implementation plans, `.context/` for scratch notes.
 
 ## Commands
 
@@ -90,4 +104,10 @@ Set `APP_URL=https://labs.lucashomer.com` in `.dev.vars` for local development.
 
 ## Legacy Code
 
-Files in `src/components/` marked with `@deprecated` are from a previous Next.js implementation. They're kept for reference but not actively used - the app now uses Hono for server rendering.
+Files in `src/components/` marked with `@deprecated` are from a previous Next.js implementation. They're kept for reference but not actively used - the app now uses Hono for server rendering. See [`docs/decisions/0001-cloudflare-workers-d1-hono.md`](docs/decisions/0001-cloudflare-workers-d1-hono.md).
+
+## How to work in this repo
+
+1. **Before making changes** — check [`docs/decisions/`](docs/decisions/) for relevant ADRs. If a decision is at stake, reference or supersede the ADR.
+2. **After shipping non-trivial changes** — update the affected runbook, or write a new ADR if a decision was made.
+3. **Before merging doc changes** — run `scripts/lint.sh` from the repo root.
