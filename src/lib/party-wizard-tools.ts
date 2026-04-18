@@ -7,7 +7,6 @@ import type {
   WizardState,
   TimelineTaskData,
   PartyInfoData,
-  GuestData,
   MenuPlanData,
 } from "./wizard-schemas";
 import {
@@ -39,7 +38,7 @@ import {
 } from "./langfuse";
 import { getLangfuseTelemetryTracer } from "./otel";
 import { tracedGenerateObject } from "./wizard-ai-runner";
-import { createRecordingAdapter, createNoopAdapter, type TelemetryPort } from "./telemetry-port";
+import { createNoopAdapter, type TelemetryPort } from "./telemetry-port";
 
 // Schema for timeline task generation (used by both tool and workflow)
 const TimelineTaskSchema = z.object({

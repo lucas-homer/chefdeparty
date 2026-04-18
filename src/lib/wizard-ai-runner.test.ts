@@ -1,6 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { createRecordingAdapter } from "./telemetry-port";
-import type { TelemetryPort } from "./telemetry-port";
 
 // Mock the AI SDK
 vi.mock("ai", () => {
