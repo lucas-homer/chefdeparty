@@ -13,7 +13,7 @@ supersedes: none
 
 ## Context
 
-Early versions of the wizard (commits `a45cabd`, `fbe79ea`) were fully LLM-orchestrated: the model decided when a step was complete, when to call tools, and when to advance. This produced flaky behavior — missed completions, duplicate guest writes, out-of-order step transitions — that the E2E suite kept catching. Commit `39329d7` ("Party Wizard: deterministic Step 1/2 flow + silent-completion resilience") and follow-ups `0b0bc99`, `5822cf7`, `52a2f94`, `918717f`, `22` (guest serialization) made Steps 1–2 deterministic while keeping the chat affordance.
+Early versions of the wizard (commits `a45cabd`, `fbe79ea`) were fully LLM-orchestrated: the model decided when a step was complete, when to call tools, and when to advance. This produced flaky behavior — missed completions, duplicate guest writes, out-of-order step transitions — that the E2E suite kept catching. Commit `39329d7` ("Party Wizard: deterministic Step 1/2 flow + silent-completion resilience") and follow-ups `0b0bc99`, `5822cf7`, `52a2f94`, `918717f` made Steps 1–2 deterministic while keeping the chat affordance.
 
 ## Decision
 
@@ -50,4 +50,4 @@ Later steps (menu, timeline) remain LLM-driven for now because the surface of va
 
 - Code: `src/lib/party-wizard-deterministic/`, `src/lib/party-wizard-handlers/`, `src/lib/party-wizard-actions/`
 - Tests: `src/lib/party-wizard-actions/parity.test.ts`, `evals/party-info-agent.eval.ts`
-- Commits: `39329d7`, `0b0bc99`, `e2684e8`, `22`
+- Commits: `39329d7`, `0b0bc99`, `e2684e8`

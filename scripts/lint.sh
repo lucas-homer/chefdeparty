@@ -93,11 +93,14 @@ if [[ -d "$DOCS_DIR/runbooks" ]]; then
   while IFS= read -r -d '' rb; do
     base="$(basename "$rb")"
     [[ "$base" == "README.md" ]] && continue
+    for field in runbook last_verified owner on_call_relevant; do
+      if ! grep -qE "^${field}:" "$rb"; then
+        warn "runbook missing '$field': $rb"
+      fi
+    done
     verified=$(awk '/^last_verified:/ { print $2; exit }' "$rb" | tr -d '"')
-    if [[ -z "$verified" ]]; then
-      warn "runbook missing last_verified: $rb"
-      continue
-    fi
+    # already warned above if missing; skip age check
+    [[ -z "$verified" ]] && continue
     # macOS vs GNU date
     if date -j -f "%Y-%m-%d" "$verified" +%s >/dev/null 2>&1; then
       verified_s=$(date -j -f "%Y-%m-%d" "$verified" +%s)
@@ -122,7 +125,7 @@ if [[ -d "$DOCS_DIR/decisions" ]]; then
   while IFS= read -r -d '' adr; do
     base="$(basename "$adr")"
     [[ "$base" == "README.md" ]] && continue
-    for field in adr title status date; do
+    for field in adr title status date deciders supersedes; do
       if ! grep -qE "^${field}:" "$adr"; then
         warn "ADR missing '$field': $adr"
       fi
