@@ -157,29 +157,6 @@ Previous confirmation summary: "${pendingConfirmationRequest.summary}"`;
           }
         }
 
-        const forcedSilentFinishReason = debug?.forceSilentFinishReason;
-        if (forcedSilentFinishReason) {
-          const silent = isSilentModelCompletion({
-            finishReason: forcedSilentFinishReason,
-            responseText: "",
-            usage: { outputTokens: 0 },
-            toolCalls: [],
-            toolResults: [],
-          });
-          const fallbackMessage = getSilentCompletionFallbackMessage(forcedSilentFinishReason);
-          await writeTextAndSave(writer, db, sessionId, step, fallbackMessage);
-          telemetryPort.setTraceOutput({
-            finishReason: forcedSilentFinishReason,
-            text: "",
-            toolCallCount: 0,
-            toolResultCount: 0,
-            isSilentCompletion: silent,
-            fallbackMessage,
-            forcedSilentCompletion: true,
-          });
-          return;
-        }
-
         const deterministicEnabled = isStep12DeterministicEnabled(env);
         let deterministicHandled = false;
         let deterministicIntent: string | undefined;
@@ -291,6 +268,29 @@ Previous confirmation summary: "${pendingConfirmationRequest.summary}"`;
               }
             }
           }
+        }
+
+        const forcedSilentFinishReason = debug?.forceSilentFinishReason;
+        if (forcedSilentFinishReason) {
+          const silent = isSilentModelCompletion({
+            finishReason: forcedSilentFinishReason,
+            responseText: "",
+            usage: { outputTokens: 0 },
+            toolCalls: [],
+            toolResults: [],
+          });
+          const fallbackMessage = getSilentCompletionFallbackMessage(forcedSilentFinishReason);
+          await writeTextAndSave(writer, db, sessionId, step, fallbackMessage);
+          telemetryPort.setTraceOutput({
+            finishReason: forcedSilentFinishReason,
+            text: "",
+            toolCallCount: 0,
+            toolResultCount: 0,
+            isSilentCompletion: silent,
+            fallbackMessage,
+            forcedSilentCompletion: true,
+          });
+          return;
         }
 
         const tools = getWizardTools(step, {
