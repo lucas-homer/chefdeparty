@@ -21,6 +21,7 @@ import type { Env } from "../../index";
 import type { createDb } from "../db";
 import { flushLangfuse, type LangfuseTraceClient } from "../langfuse";
 import { flushLangfuseTelemetry, getLangfuseTelemetryTracer } from "../otel";
+import type { TelemetryPort } from "../telemetry-port";
 
 // ============================================
 // Types
@@ -70,6 +71,7 @@ export interface HandlerContext {
   pendingConfirmationRequest?: StepConfirmationRequest;
   userRecipes?: Array<{ id: string; name: string; description: string | null }>;
   telemetry?: WizardTelemetryContext;
+  telemetryPort?: TelemetryPort;
   debug?: {
     forceSilentFinishReason?: string;
   };

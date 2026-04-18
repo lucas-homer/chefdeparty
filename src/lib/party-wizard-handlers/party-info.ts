@@ -18,7 +18,6 @@ import {
   createWrappedModels,
   filterMessagesForAI,
   createOnFinishHandler,
-  buildTelemetrySettings,
   getConfirmationToolName,
   getRevisionToolInstructions,
   getSilentCompletionFallbackMessage,
@@ -27,12 +26,8 @@ import {
   isStep12DeterministicEnabled,
   writeTextAndSave,
 } from "./utils";
-import {
-  createLangfuseGeneration,
-  endLangfuseGeneration,
-  updateLangfuseTrace,
-  updateLangfuseGeneration,
-} from "../langfuse";
+import { runWithRetry } from "../wizard-ai-runner";
+import { createNoopAdapter } from "../telemetry-port";
 import { resolveDeterministicPartyInfoTurn } from "../party-wizard-deterministic/party-info";
 import { updatePartyInfoAction, confirmPartyInfoAction } from "../party-wizard-actions/party-info";
 
@@ -53,11 +48,10 @@ export async function handlePartyInfoStep(ctx: HandlerContext): Promise<Response
     debug,
   } = ctx;
 
+  const telemetryPort = ctx.telemetryPort || createNoopAdapter();
+
   const {
-    streamText,
     convertToModelMessages,
-    stepCountIs,
-    hasToolCall,
     createUIMessageStream,
     createUIMessageStreamResponse,
   } = await import("ai");
@@ -152,17 +146,38 @@ Previous confirmation summary: "${pendingConfirmationRequest.summary}"`;
               },
             });
 
-            updateLangfuseTrace(telemetry?.traceClient, {
-              output: {
-                event: "step-confirmed",
-                step: request.step,
-                nextStep,
-                requestId: request.id,
-              },
+            telemetryPort.setTraceOutput({
+              event: "step-confirmed",
+              step: request.step,
+              nextStep,
+              requestId: request.id,
             });
 
             return;
           }
+        }
+
+        const forcedSilentFinishReason = debug?.forceSilentFinishReason;
+        if (forcedSilentFinishReason) {
+          const silent = isSilentModelCompletion({
+            finishReason: forcedSilentFinishReason,
+            responseText: "",
+            usage: { outputTokens: 0 },
+            toolCalls: [],
+            toolResults: [],
+          });
+          const fallbackMessage = getSilentCompletionFallbackMessage(forcedSilentFinishReason);
+          await writeTextAndSave(writer, db, sessionId, step, fallbackMessage);
+          telemetryPort.setTraceOutput({
+            finishReason: forcedSilentFinishReason,
+            text: "",
+            toolCallCount: 0,
+            toolResultCount: 0,
+            isSilentCompletion: silent,
+            fallbackMessage,
+            forcedSilentCompletion: true,
+          });
+          return;
         }
 
         const deterministicEnabled = isStep12DeterministicEnabled(env);
@@ -200,14 +215,12 @@ Previous confirmation summary: "${pendingConfirmationRequest.summary}"`;
 
                 if (!result.success) {
                   await writeTextAndSave(writer, db, sessionId, step, result.error);
-                  updateLangfuseTrace(telemetry?.traceClient, {
-                    output: {
-                      decisionPath: "deterministic",
-                      deterministicHandled: true,
-                      deterministicIntent,
-                      deterministicActionError: result.error,
-                      modelTierUsed: "none",
-                    },
+                  telemetryPort.setTraceOutput({
+                    decisionPath: "deterministic",
+                    deterministicHandled: true,
+                    deterministicIntent,
+                    deterministicActionError: result.error,
+                    modelTierUsed: "none",
                   });
                   return;
                 }
@@ -224,14 +237,12 @@ Previous confirmation summary: "${pendingConfirmationRequest.summary}"`;
 
                 if (!result.success) {
                   await writeTextAndSave(writer, db, sessionId, step, result.error);
-                  updateLangfuseTrace(telemetry?.traceClient, {
-                    output: {
-                      decisionPath: "deterministic",
-                      deterministicHandled: true,
-                      deterministicIntent,
-                      deterministicActionError: result.error,
-                      modelTierUsed: "none",
-                    },
+                  telemetryPort.setTraceOutput({
+                    decisionPath: "deterministic",
+                    deterministicHandled: true,
+                    deterministicIntent,
+                    deterministicActionError: result.error,
+                    modelTierUsed: "none",
                   });
                   return;
                 }
@@ -252,22 +263,18 @@ Previous confirmation summary: "${pendingConfirmationRequest.summary}"`;
               additionalParts
             );
 
-            updateLangfuseTrace(telemetry?.traceClient, {
-              output: {
-                decisionPath: "deterministic",
-                deterministicHandled: true,
-                deterministicIntent,
-                deterministicActionCount: deterministic.actions.length,
-                modelTierUsed: "none",
-              },
+            telemetryPort.setTraceOutput({
+              decisionPath: "deterministic",
+              deterministicHandled: true,
+              deterministicIntent,
+              deterministicActionCount: deterministic.actions.length,
+              modelTierUsed: "none",
             });
             return;
           }
 
           deterministicReason = deterministic.reason;
 
-          // Execute partial actions even on unhandled results (e.g., saving date/location
-          // before falling through to model on low-confidence name inference)
           if (deterministic.partialActions?.length) {
             for (const action of deterministic.partialActions) {
               if (action.type === "update-party-info") {
@@ -285,8 +292,6 @@ Previous confirmation summary: "${pendingConfirmationRequest.summary}"`;
             }
           }
         }
-
-        const forcedSilentFinishReason = debug?.forceSilentFinishReason;
 
         const tools = getWizardTools(step, {
           db,
@@ -320,165 +325,28 @@ Previous confirmation summary: "${pendingConfirmationRequest.summary}"`;
         const modelMessages = await convertToModelMessages(messagesToConvert as WizardMessage[]);
 
         console.log("[party-info] Calling streamText with", Object.keys(tools).length, "tools");
-        const runAttempt = async ({
-          attempt,
-          attemptSystemPrompt,
-          generationName,
-          model,
-          modelName,
-          modelTier,
-        }: {
-          attempt: number;
-          attemptSystemPrompt: string;
-          generationName: string;
-          model: unknown;
-          modelName: string;
-          modelTier: "default" | "strong";
-        }) => {
-          if (forcedSilentFinishReason) {
-            const responseText = "";
-            const finishReason = forcedSilentFinishReason;
-            const rawFinishReason = forcedSilentFinishReason;
-            const usage = { outputTokens: 0 };
-            const toolCalls: unknown[] = [];
-            const toolResults: unknown[] = [];
-            return {
-              responseText,
-              finishReason,
-              rawFinishReason,
-              usage,
-              toolCalls,
-              toolResults,
-              isSilentCompletion: isSilentModelCompletion({
-                finishReason,
-                responseText,
-                usage,
-                toolCalls,
-                toolResults,
-              }),
-              responseMessageCount: 0,
-              modelTier,
-              forcedSilentCompletion: true,
-            };
-          }
 
-          const result = streamText({
-            model: model as never,
-            system: attemptSystemPrompt,
+        const { result: finalAttempt, retryAttempted, retrySucceeded, attempts } = await runWithRetry(
+          {
+            telemetry: telemetryPort,
+            functionIdPrefix: "wizard.party-info",
+          },
+          {
+            model: defaultModel,
+            modelName: "gemini-2.5-flash",
+            systemPrompt,
             messages: modelMessages,
             tools,
-            toolChoice: undefined,
-            stopWhen: [stepCountIs(10), hasToolCall(confirmationToolName)],
-            experimental_telemetry: buildTelemetrySettings(
-              telemetry,
-              "wizard.party-info.streamText",
-              {
-                messageCount: modelMessages.length,
-                toolCount: Object.keys(tools).length,
-                isRevisionRequest,
-                retryAttempt: attempt,
-                modelTier,
-              },
-              env
-            ),
-          });
-
-          const generation = createLangfuseGeneration(env, {
-            traceId: telemetry?.traceId,
-            name: generationName,
-            model: modelName,
-            input: {
-              systemPrompt: attemptSystemPrompt,
-              messages: modelMessages,
-              toolNames: Object.keys(tools),
-              messageCount: modelMessages.length,
-              toolCount: Object.keys(tools).length,
-              isRevisionRequest,
-              retryAttempt: attempt,
-              modelTier,
-            },
+            confirmationToolName,
+            writer,
+            strongModel,
+            strongModelName: env.WIZARD_STRONG_MODEL || "gemini-2.5-pro",
             metadata: {
-              step,
-              sessionId,
-              retryAttempt: attempt,
-              modelTier,
+              isRevisionRequest,
             },
-          });
+          }
+        );
 
-          writer.merge(result.toUIMessageStream());
-          const [response, responseText, finishReason, rawFinishReason, usage, toolCalls, toolResults] = await Promise.all([
-            result.response,
-            result.text,
-            result.finishReason,
-            result.rawFinishReason,
-            result.usage,
-            result.toolCalls,
-            result.toolResults,
-          ]);
-          const attemptIsSilentCompletion = isSilentModelCompletion({
-            finishReason,
-            responseText,
-            usage,
-            toolCalls,
-            toolResults,
-          });
-          updateLangfuseGeneration(generation, {
-            output: {
-              finishReason,
-              rawFinishReason,
-              text: responseText,
-              responseMessages: response.messages,
-              toolCallCount: toolCalls.length,
-              toolResultCount: toolResults.length,
-              isSilentCompletion: attemptIsSilentCompletion,
-              modelTier,
-            },
-            usage,
-          });
-          endLangfuseGeneration(generation);
-
-          return {
-            responseText,
-            finishReason,
-            rawFinishReason,
-            usage,
-            toolCalls,
-            toolResults,
-            isSilentCompletion: attemptIsSilentCompletion,
-            responseMessageCount: response.messages.length,
-            modelTier,
-            forcedSilentCompletion: false,
-          };
-        };
-
-        const firstAttempt = await runAttempt({
-          attempt: 1,
-          attemptSystemPrompt: systemPrompt,
-          generationName: "wizard.party-info.streamText",
-          model: defaultModel,
-          modelName: "gemini-2.5-flash",
-          modelTier: "default",
-        });
-
-        let finalAttempt = firstAttempt;
-        let retryAttempted = false;
-        if (firstAttempt.isSilentCompletion) {
-          retryAttempted = true;
-          finalAttempt = await runAttempt({
-            attempt: 2,
-            attemptSystemPrompt: `${systemPrompt}
-
-<retry-instruction>
-Your previous attempt returned no visible response. Provide a concise user-visible reply, and call tools if needed.
-</retry-instruction>`,
-            generationName: "wizard.party-info.streamText.retry",
-            model: strongModel,
-            modelName: env.WIZARD_STRONG_MODEL || "gemini-2.5-pro",
-            modelTier: "strong",
-          });
-        }
-
-        const retrySucceeded = retryAttempted && !finalAttempt.isSilentCompletion;
         const fallbackMessage = finalAttempt.isSilentCompletion
           ? getSilentCompletionFallbackMessage(finalAttempt.finishReason)
           : undefined;
@@ -487,8 +355,7 @@ Your previous attempt returned no visible response. Provide a concise user-visib
         }
 
         // Auto-confirm: when the model called updatePartyInfo and all required
-        // fields are now set, trigger confirmation server-side to eliminate the
-        // extra round trip of waiting for the model to chain confirmPartyInfo.
+        // fields are now set, trigger confirmation server-side.
         let autoConfirmed = false;
         if (!fallbackMessage) {
           const calledUpdate = (finalAttempt.toolCalls as Array<{ toolName: string }>).some(
@@ -498,7 +365,6 @@ Your previous attempt returned no visible response. Provide a concise user-visib
             (tc) => tc.toolName === confirmationToolName
           );
 
-          // Don't auto-confirm if the time is midnight (likely defaulted, not intentional)
           const partyDateTime = currentData.partyInfo?.dateTime
             ? new Date(currentData.partyInfo.dateTime)
             : null;
@@ -537,9 +403,7 @@ Your previous attempt returned no visible response. Provide a concise user-visib
           }
         }
 
-        // Fallback text: when the model called tools but produced no visible
-        // text (and auto-confirm didn't already handle it above), ensure the
-        // user sees something.
+        // Fallback text when model called tools but produced no visible text
         if (
           !fallbackMessage &&
           !autoConfirmed &&
@@ -556,49 +420,32 @@ Your previous attempt returned no visible response. Provide a concise user-visib
           );
         }
 
-        updateLangfuseTrace(telemetry?.traceClient, {
-          output: {
-            decisionPath: "model",
-            deterministicHandled,
-            deterministicIntent,
-            deterministicReason,
-            modelTierUsed: retryAttempted ? "strong" : "default",
-            finishReason: finalAttempt.finishReason,
-            rawFinishReason: finalAttempt.rawFinishReason,
-            text: finalAttempt.responseText,
-            responseMessageCount: finalAttempt.responseMessageCount,
-            toolCallCount: finalAttempt.toolCalls.length,
-            toolResultCount: finalAttempt.toolResults.length,
-            isSilentCompletion: finalAttempt.isSilentCompletion,
-            fallbackMessage,
-            retryAttempted,
-            retrySucceeded,
-            forcedSilentCompletion: finalAttempt.forcedSilentCompletion,
-            attempts: [
-              {
-                attempt: 1,
-                modelTier: firstAttempt.modelTier,
-                finishReason: firstAttempt.finishReason,
-                rawFinishReason: firstAttempt.rawFinishReason,
-                isSilentCompletion: firstAttempt.isSilentCompletion,
-                toolCallCount: firstAttempt.toolCalls.length,
-                toolResultCount: firstAttempt.toolResults.length,
-                hasText: firstAttempt.responseText.trim().length > 0,
-              },
-              ...(retryAttempted
-                ? [{
-                    attempt: 2,
-                    modelTier: finalAttempt.modelTier,
-                    finishReason: finalAttempt.finishReason,
-                    rawFinishReason: finalAttempt.rawFinishReason,
-                    isSilentCompletion: finalAttempt.isSilentCompletion,
-                    toolCallCount: finalAttempt.toolCalls.length,
-                    toolResultCount: finalAttempt.toolResults.length,
-                    hasText: finalAttempt.responseText.trim().length > 0,
-                  }]
-                : []),
-            ],
-          },
+        telemetryPort.setTraceOutput({
+          decisionPath: "model",
+          deterministicHandled,
+          deterministicIntent,
+          deterministicReason,
+          modelTierUsed: retryAttempted ? "strong" : "default",
+          finishReason: finalAttempt.finishReason,
+          rawFinishReason: finalAttempt.rawFinishReason,
+          text: finalAttempt.responseText,
+          responseMessageCount: finalAttempt.responseMessageCount,
+          toolCallCount: finalAttempt.toolCalls.length,
+          toolResultCount: finalAttempt.toolResults.length,
+          isSilentCompletion: finalAttempt.isSilentCompletion,
+          fallbackMessage,
+          retryAttempted,
+          retrySucceeded,
+          attempts: attempts.map((a, i) => ({
+            attempt: i + 1,
+            modelTier: a.modelTier,
+            finishReason: a.finishReason,
+            rawFinishReason: a.rawFinishReason,
+            isSilentCompletion: a.isSilentCompletion,
+            toolCallCount: a.toolCalls.length,
+            toolResultCount: a.toolResults.length,
+            hasText: a.responseText.trim().length > 0,
+          })),
         });
       },
       generateId: () => crypto.randomUUID(),
